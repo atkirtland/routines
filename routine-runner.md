@@ -2,7 +2,7 @@
 aliases:
   - Routine Runner
 created: 2026-09-19T15:14:37-04:00
-modified: 2026-09-23T21:15:00-04:00
+modified: 2026-09-24T00:00:00-04:00
 ---
 
 # Routine Runner
@@ -11,23 +11,27 @@ modified: 2026-09-23T21:15:00-04:00
 <summary>How it works</summary>
 <p>Pick a note, then step through its open tasks one at a time with a countdown timer.</p>
 <ul>
-<li>Add an estimate to a task with <code>🔣 mm:ss</code> or <code>🔣 hh:mm:ss</code>, e.g. <code>- [ ] Stretch 🔣 10:00</code>. No marker → defaults to 5:00.</li>
+<li>Add a time goal to a task with <code>⏱️ mm:ss</code> or <code>⏱️ hh:mm:ss</code>, e.g. <code>- [ ] Stretch ⏱️ 10:00</code>. No marker → defaults to 5:00.</li>
+<li>Give a task a count goal instead with <code>🎯 n</code>, e.g. <code>- [ ] Push-ups 🎯 20</code>. While it's running, tap the − / + buttons or click the number to log how many you actually did; the current count and the goal are shown side by side.</li>
+<li>If a task also has <code>#tags</code> or Tasks plugin metadata (dates, priority, recurrence, …), put the routine runner marker after the tags and before the metadata: <code>- [ ] Push-ups #fitness 🎯 20 📅 2026-09-25</code>.</li>
 <li>After picking a note, an optional section finder lets you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file). Leave it blank for the whole note.</li>
-<li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also appends <code>🟰 mm:ss</code> (or <code>🟰 hh:mm:ss</code> past an hour) to the task, recording the actual time spent.</li>
+<li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also records <code>🏁 mm:ss</code> (or <code>🏁 hh:mm:ss</code> past an hour) — and for a task with a count goal, <code>🥅 n</code> alongside it — the actual time (and count) achieved. These are inserted right before any Tasks plugin metadata (dates, priority, recurrence, done date, …), so the order stays description → tags → routine runner markers → Tasks plugin metadata.</li>
 <li><strong>Skip</strong> advances without touching the file.</li>
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
 <li>Timer keeps counting past the estimate into negative time, shown in red.</li>
 <li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
+<li>Progress is kept outside this code block, so Dataview's periodic auto-refresh (it re-runs every <code>dataviewjs</code> block whenever any file in the vault changes) won't bump you back to the picker mid-routine. It stays in place until you finish, click "← change note", or restart Obsidian.</li>
 </ul>
 </details>
 
 ```dataviewjs
 const DEFAULT_ESTIMATE_MS = 5 * 60 * 1000;
-const ESTIMATE_RE = /🔣\s*(\d+):(\d{2})(?::(\d{2}))?/;
+const TIME_GOAL_RE = /⏱️?\s*(\d+):(\d{2})(?::(\d{2}))?/;
+const COUNT_GOAL_RE = /🎯\s*(\d+)/;
 const TASK_LINE_RE = /^(\s*[-*+]\s\[)([^\]])(\]\s?)(.*)$/;
 
 function parseEstimateMs(text) {
-  const m = text.match(ESTIMATE_RE);
+  const m = text.match(TIME_GOAL_RE);
   if (!m) return DEFAULT_ESTIMATE_MS;
   if (m[3] !== undefined) {
     const h = parseInt(m[1], 10), mnt = parseInt(m[2], 10), sec = parseInt(m[3], 10);
@@ -35,6 +39,26 @@ function parseEstimateMs(text) {
   }
   const mnt = parseInt(m[1], 10), sec = parseInt(m[2], 10);
   return (mnt * 60 + sec) * 1000;
+}
+
+function parseGoalCount(text) {
+  const m = text.match(COUNT_GOAL_RE);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// Tasks plugin's own metadata (dates, priority, recurrence, done date, id, on-hold)
+// is always emoji-prefixed and belongs at the very end of the line. Our own result
+// markers should sit before it — after the description and any #tags — so insert
+// just ahead of whichever of these shows up first, rather than appending blindly.
+const TASKS_METADATA_EMOJI_RE = /[🔺⏫🔼🔽⏬🔁➕🛫⏳📅✅❌🆔⛔]/;
+
+function insertBeforeTasksMetadata(line, insertText) {
+  const trimmed = line.replace(/\s+$/, "");
+  const m = trimmed.match(TASKS_METADATA_EMOJI_RE);
+  if (!m) return `${trimmed} ${insertText}`;
+  const before = trimmed.slice(0, m.index).replace(/\s+$/, "");
+  const after = trimmed.slice(m.index);
+  return `${before} ${insertText} ${after}`;
 }
 
 function formatDuration(ms) {
@@ -84,6 +108,14 @@ if (!document.getElementById("routine-runner-style")) {
     .rr-bar { height:10px; border-radius:5px; background:var(--background-modifier-border); overflow:hidden; margin:0.75em 0 1em; }
     .rr-bar-fill { height:100%; width:0%; background:var(--color-green, #4caf50); transition:width 0.2s linear, background-color 0.2s linear; }
     .rr-bar-fill.rr-overdue { background:var(--color-red, #e5534b); }
+    .rr-count-row { display:flex; align-items:center; justify-content:center; gap:0.6em; margin:0.75em 0 1em; }
+    .rr-count-btn { flex:none; width:2.4em; font-size:1.2em; padding:6px 0; }
+    .rr-count-value { font-size:1.8em; font-weight:700; min-width:1.4em; text-align:center; cursor:pointer; border-bottom:1px dashed var(--text-faint); }
+    .rr-count-value:hover { color:var(--interactive-accent); }
+    .rr-count-sep { color:var(--text-muted); font-size:1.4em; }
+    .rr-count-goal { color:var(--text-muted); font-size:1.4em; font-weight:600; }
+    .rr-count-input { font-size:1.8em; font-weight:700; width:3.2em; text-align:center; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); }
+    .rr-badge-group { display:flex; gap:0.4em; flex:none; }
     .rr-btn-row { display:flex; gap:0.5em; }
     .rr-btn { flex:1; padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
     .rr-btn:hover { background:var(--interactive-hover); }
@@ -97,7 +129,14 @@ if (!document.getElementById("routine-runner-style")) {
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 
-const state = {
+// Dataview tears down and re-runs this whole block on a debounced timer whenever
+// any file in the vault changes (e.g. when we ourselves edit the routine note on
+// Done) — it has no way to know this block doesn't care. A fresh `state` object
+// on every run would silently dump the user back to the picker mid-routine, so
+// state lives on `window` and survives across those re-executions.
+const RR_STATE_KEY = "__routineRunnerState";
+
+const defaultState = {
   screen: "pick",
   query: "",
   file: null,
@@ -105,6 +144,7 @@ const state = {
   index: 0,
   paused: false,
   elapsedMs: 0,
+  count: 0,
   lastTick: 0,
   intervalId: null,
   completedCount: 0,
@@ -115,6 +155,9 @@ const state = {
   sectionIdx: "",
   sectionQuery: "",
 };
+
+const state = window[RR_STATE_KEY] || defaultState;
+window[RR_STATE_KEY] = state;
 
 let refs = {};
 
@@ -131,8 +174,9 @@ async function loadFileData(file) {
       const desc = tm[4];
       tasks.push({
         line: i,
-        display: desc.replace(ESTIMATE_RE, "").trim(),
+        display: desc.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "").replace(/\s{2,}/g, " ").trim(),
         estimateMs: parseEstimateMs(desc),
+        goalCount: parseGoalCount(desc),
       });
     }
   });
@@ -413,7 +457,11 @@ function renderReview() {
   state.tasks.forEach((t) => {
     const row = list.createDiv({ cls: "rr-review-item" });
     row.createSpan({ text: t.display });
-    row.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
+    const badges = row.createDiv({ cls: "rr-badge-group" });
+    badges.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
+    if (t.goalCount != null) {
+      badges.createSpan({ cls: "rr-badge", text: `🎯 ${t.goalCount}` });
+    }
   });
 
   const startBtn = container.createEl("button", {
@@ -423,6 +471,7 @@ function renderReview() {
   startBtn.addEventListener("click", () => {
     state.index = 0;
     state.elapsedMs = 0;
+    state.count = 0;
     state.paused = false;
     state.completedCount = 0;
     state.screen = "run";
@@ -450,6 +499,44 @@ function renderRun() {
   const card = container.createDiv({ cls: "rr-card" });
   card.createDiv({ cls: "rr-task-text", text: task.display });
   card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
+
+  if (task.goalCount != null) {
+    const countRow = card.createDiv({ cls: "rr-count-row" });
+    const minusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "−" });
+    let valueEl = countRow.createSpan({ cls: "rr-count-value", text: String(state.count) });
+    countRow.createSpan({ cls: "rr-count-sep", text: "/" });
+    countRow.createSpan({ cls: "rr-count-goal", text: String(task.goalCount) });
+    const plusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "+" });
+
+    function setCount(n) {
+      state.count = Math.max(0, n);
+      valueEl.textContent = String(state.count);
+    }
+
+    function startEdit() {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "rr-count-input";
+      input.value = String(state.count);
+      valueEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const n = parseInt(input.value, 10);
+        setCount(isNaN(n) ? state.count : n);
+        input.replaceWith(valueEl);
+      };
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+        if (e.key === "Escape") { input.value = String(state.count); input.blur(); }
+      });
+    }
+
+    minusBtn.addEventListener("click", () => setCount(state.count - 1));
+    plusBtn.addEventListener("click", () => setCount(state.count + 1));
+    valueEl.addEventListener("click", startEdit);
+  }
 
   const timerRow = card.createDiv({ cls: "rr-timer-row" });
   refs.timerEl = timerRow.createDiv({ cls: "rr-timer", text: "0:00" });
@@ -490,6 +577,7 @@ function advance(wasDone) {
   if (wasDone) state.completedCount++;
   state.index++;
   state.elapsedMs = 0;
+  state.count = 0;
   state.paused = false;
   state.screen = state.index >= state.tasks.length ? "done" : "run";
   render();
@@ -518,10 +606,11 @@ async function completeCurrentTask() {
   }
 
   const elapsedLabel = formatDuration(state.elapsedMs);
+  const resultText = task.goalCount != null ? `🏁 ${elapsedLabel} 🥅 ${state.count}` : `🏁 ${elapsedLabel}`;
   const replacementLines = replacement.split("\n").map((line) => {
     const lm = line.match(TASK_LINE_RE);
     if (lm && lm[2] !== " ") {
-      return `${line.replace(/\s+$/, "")} 🟰 ${elapsedLabel}`;
+      return insertBeforeTasksMetadata(line, resultText);
     }
     return line;
   });
@@ -537,6 +626,10 @@ async function completeCurrentTask() {
 }
 
 render();
+// Rehydrated mid-routine from a prior execution: resume ticking in this
+// context. startTimer() clears any interval id first, so this is safe even
+// if the old instance's watchdog (below) hasn't fired yet to null it out.
+if (state.screen === "run") startTimer();
 
 const watchdog = new MutationObserver(() => {
   if (!document.body.contains(container)) {
