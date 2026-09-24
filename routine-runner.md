@@ -1,0 +1,548 @@
+---
+aliases:
+  - Routine Runner
+created: 2026-09-19T15:14:37-04:00
+modified: 2026-09-23T21:15:00-04:00
+---
+
+# Routine Runner
+
+<details>
+<summary>How it works</summary>
+<p>Pick a note, then step through its open tasks one at a time with a countdown timer.</p>
+<ul>
+<li>Add an estimate to a task with <code>🔣 mm:ss</code> or <code>🔣 hh:mm:ss</code>, e.g. <code>- [ ] Stretch 🔣 10:00</code>. No marker → defaults to 5:00.</li>
+<li>After picking a note, an optional section finder lets you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file). Leave it blank for the whole note.</li>
+<li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also appends <code>🟰 mm:ss</code> (or <code>🟰 hh:mm:ss</code> past an hour) to the task, recording the actual time spent.</li>
+<li><strong>Skip</strong> advances without touching the file.</li>
+<li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
+<li>Timer keeps counting past the estimate into negative time, shown in red.</li>
+<li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
+</ul>
+</details>
+
+```dataviewjs
+const DEFAULT_ESTIMATE_MS = 5 * 60 * 1000;
+const ESTIMATE_RE = /🔣\s*(\d+):(\d{2})(?::(\d{2}))?/;
+const TASK_LINE_RE = /^(\s*[-*+]\s\[)([^\]])(\]\s?)(.*)$/;
+
+function parseEstimateMs(text) {
+  const m = text.match(ESTIMATE_RE);
+  if (!m) return DEFAULT_ESTIMATE_MS;
+  if (m[3] !== undefined) {
+    const h = parseInt(m[1], 10), mnt = parseInt(m[2], 10), sec = parseInt(m[3], 10);
+    return ((h * 60 + mnt) * 60 + sec) * 1000;
+  }
+  const mnt = parseInt(m[1], 10), sec = parseInt(m[2], 10);
+  return (mnt * 60 + sec) * 1000;
+}
+
+function formatDuration(ms) {
+  const neg = ms < 0;
+  let totalSec = Math.round(Math.abs(ms) / 1000);
+  const h = Math.floor(totalSec / 3600);
+  totalSec -= h * 3600;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  const ss = String(s).padStart(2, "0");
+  const str = h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  return (neg ? "-" : "") + str;
+}
+
+const container = dv.container;
+container.empty();
+container.addClass("rr-root");
+
+if (!document.getElementById("routine-runner-style")) {
+  const style = document.createElement("style");
+  style.id = "routine-runner-style";
+  style.textContent = `
+    .rr-root { font-size: var(--font-text-size); }
+    .rr-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5em; }
+    .rr-link { cursor:pointer; font-size:0.85em; color:var(--text-muted); }
+    .rr-link:hover { color:var(--text-normal); }
+    .rr-input { width:100%; box-sizing:border-box; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); margin-bottom:0.5em; }
+    .rr-toggle-row { display:flex; align-items:center; gap:0.5em; margin-bottom:0.75em; color:var(--text-muted); font-size:0.9em; }
+    .rr-toggle-row label { cursor:pointer; }
+    .rr-pick-list { max-height:300px; overflow-y:auto; border:1px solid var(--background-modifier-border); border-radius:6px; }
+    .rr-pick-item { display:flex; justify-content:space-between; gap:1em; padding:6px 10px; cursor:pointer; }
+    .rr-pick-item:hover { background:var(--background-modifier-hover); }
+    .rr-pick-item-active { background:var(--background-modifier-hover); font-weight:600; }
+    .rr-section-list { max-height:180px; margin-bottom:0.75em; }
+    .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .rr-empty { color:var(--text-muted); padding:8px 0; }
+    .rr-review-list { border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
+    .rr-review-item { display:flex; justify-content:space-between; gap:1em; padding:6px 10px; border-bottom:1px solid var(--background-modifier-border); }
+    .rr-review-item:last-child { border-bottom:none; }
+    .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
+    .rr-card { border:1px solid var(--background-modifier-border); border-radius:8px; padding:1em; background:var(--background-secondary); }
+    .rr-task-text { font-size:1.15em; font-weight:600; margin-bottom:0.25em; }
+    .rr-est { color:var(--text-muted); font-size:0.85em; margin-bottom:0.75em; }
+    .rr-timer-row { text-align:center; }
+    .rr-timer { font-size:2.2em; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text-normal); }
+    .rr-timer.rr-overdue { color:var(--color-red, #e5534b); }
+    .rr-bar { height:10px; border-radius:5px; background:var(--background-modifier-border); overflow:hidden; margin:0.75em 0 1em; }
+    .rr-bar-fill { height:100%; width:0%; background:var(--color-green, #4caf50); transition:width 0.2s linear, background-color 0.2s linear; }
+    .rr-bar-fill.rr-overdue { background:var(--color-red, #e5534b); }
+    .rr-btn-row { display:flex; gap:0.5em; }
+    .rr-btn { flex:1; padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
+    .rr-btn:hover { background:var(--interactive-hover); }
+    .rr-btn-primary { background:var(--interactive-accent); color:var(--text-on-accent); border-color:var(--interactive-accent); }
+    .rr-btn-primary:hover { background:var(--interactive-accent-hover); }
+    .rr-next { margin-top:0.75em; color:var(--text-muted); font-size:0.9em; }
+    .rr-progress-label { font-weight:600; }
+  `;
+  document.head.appendChild(style);
+}
+
+const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+
+const state = {
+  screen: "pick",
+  query: "",
+  file: null,
+  tasks: [],
+  index: 0,
+  paused: false,
+  elapsedMs: 0,
+  lastTick: 0,
+  intervalId: null,
+  completedCount: 0,
+  leaveUnchecked: false,
+  headings: [],
+  totalLines: 0,
+  allTasks: [],
+  sectionIdx: "",
+  sectionQuery: "",
+};
+
+let refs = {};
+
+async function loadFileData(file) {
+  const content = await app.vault.read(file);
+  const lines = content.split("\n");
+  const headings = [];
+  const tasks = [];
+  lines.forEach((line, i) => {
+    const hm = line.match(HEADING_RE);
+    if (hm) headings.push({ line: i, level: hm[1].length, text: hm[2] });
+    const tm = line.match(TASK_LINE_RE);
+    if (tm && tm[2] === " ") {
+      const desc = tm[4];
+      tasks.push({
+        line: i,
+        display: desc.replace(ESTIMATE_RE, "").trim(),
+        estimateMs: parseEstimateMs(desc),
+      });
+    }
+  });
+  return { totalLines: lines.length, headings, tasks };
+}
+
+// A section runs from just after its heading to the next heading of the
+// same or higher level (fewer #'s), or end of file.
+function sectionLineRange(headings, totalLines, idx) {
+  const h = headings[idx];
+  let end = totalLines;
+  for (let j = idx + 1; j < headings.length; j++) {
+    if (headings[j].level <= h.level) {
+      end = headings[j].line;
+      break;
+    }
+  }
+  return { start: h.line + 1, end };
+}
+
+function currentSectionLabel() {
+  if (state.sectionIdx === "") return null;
+  const h = state.headings[parseInt(state.sectionIdx, 10)];
+  return h ? h.text : null;
+}
+
+function applySection(idx) {
+  state.sectionIdx = idx;
+  state.sectionQuery = "";
+  if (idx === "") {
+    state.tasks = state.allTasks;
+  } else {
+    const range = sectionLineRange(state.headings, state.totalLines, parseInt(idx, 10));
+    state.tasks = state.allTasks.filter((t) => t.line >= range.start && t.line < range.end);
+  }
+  render();
+}
+
+function fuzzyScore(query, text) {
+  query = query.toLowerCase();
+  text = text.toLowerCase();
+  let qi = 0, score = 0, streak = 0;
+  for (let ti = 0; ti < text.length && qi < query.length; ti++) {
+    if (text[ti] === query[qi]) {
+      qi++;
+      streak++;
+      score += 1 + streak * 0.5;
+    } else {
+      streak = 0;
+    }
+  }
+  return qi === query.length ? score : -1;
+}
+
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch (e) {
+    wakeLock = null;
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+// The OS revokes the wake lock whenever the screen actually turns off, so it
+// has to be re-requested once the app is visible again — otherwise the next
+// screen-off is permanent for the rest of the routine.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.intervalId && !wakeLock) {
+    requestWakeLock();
+  }
+});
+
+function stopTimer() {
+  if (state.intervalId) {
+    clearInterval(state.intervalId);
+    state.intervalId = null;
+  }
+  releaseWakeLock();
+}
+
+function startTimer() {
+  stopTimer();
+  state.lastTick = Date.now();
+  state.intervalId = setInterval(tick, 250);
+  requestWakeLock();
+}
+
+function tick() {
+  const now = Date.now();
+  if (!state.paused) state.elapsedMs += now - state.lastTick;
+  state.lastTick = now;
+  updateTimerDisplay();
+}
+
+function updateTimerDisplay() {
+  if (state.screen !== "run" || !refs.timerEl) return;
+  const task = state.tasks[state.index];
+  if (!task) return;
+  const estimateMs = task.estimateMs;
+  const remainingMs = estimateMs - state.elapsedMs;
+  const overdue = remainingMs < 0;
+  refs.timerEl.textContent = formatDuration(remainingMs);
+  refs.timerEl.toggleClass("rr-overdue", overdue);
+  const pct = Math.min(100, (state.elapsedMs / estimateMs) * 100);
+  refs.barFillEl.style.width = pct + "%";
+  refs.barFillEl.toggleClass("rr-overdue", overdue);
+}
+
+function render() {
+  container.empty();
+  refs = {};
+  if (state.screen === "pick") renderPick();
+  else if (state.screen === "review") renderReview();
+  else if (state.screen === "run") renderRun();
+  else if (state.screen === "done") renderDone();
+}
+
+function renderPick() {
+  container.createEl("h3", { text: "Run a routine" });
+
+  const toggleRow = container.createDiv({ cls: "rr-toggle-row" });
+  const toggleId = "rr-leave-unchecked-" + Math.random().toString(36).slice(2);
+  const toggle = toggleRow.createEl("input", {
+    attr: { type: "checkbox", id: toggleId },
+  });
+  toggle.checked = state.leaveUnchecked;
+  toggle.addEventListener("change", () => {
+    state.leaveUnchecked = toggle.checked;
+  });
+  toggleRow.createEl("label", {
+    text: "Leave tasks unchecked (don't record completion)",
+    attr: { for: toggleId },
+  });
+
+  const input = container.createEl("input", {
+    cls: "rr-input",
+    attr: { type: "text", placeholder: "Type a note name…" },
+  });
+  input.value = state.query;
+  const list = container.createDiv({ cls: "rr-pick-list" });
+
+  function renderList() {
+    list.empty();
+    const files = app.vault.getMarkdownFiles();
+    let matches;
+    if (state.query.trim() === "") {
+      matches = files
+        .slice()
+        .sort((a, b) => a.basename.localeCompare(b.basename))
+        .slice(0, 25)
+        .map((f) => ({ file: f }));
+    } else {
+      matches = files
+        .map((f) => ({ file: f, score: fuzzyScore(state.query, f.basename) }))
+        .filter((m) => m.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 25);
+    }
+    if (matches.length === 0) {
+      list.createDiv({ cls: "rr-empty", text: "No matching notes." });
+      return;
+    }
+    matches.forEach(({ file }) => {
+      const item = list.createDiv({ cls: "rr-pick-item" });
+      item.createSpan({ text: file.basename });
+      if (file.parent && file.parent.path !== "/") {
+        item.createSpan({ cls: "rr-pick-path", text: file.parent.path });
+      }
+      item.addEventListener("click", () => selectFile(file));
+    });
+  }
+
+  input.addEventListener("input", () => {
+    state.query = input.value;
+    renderList();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = list.querySelector(".rr-pick-item");
+      if (first) first.dispatchEvent(new MouseEvent("click"));
+    }
+  });
+
+  renderList();
+  input.focus();
+}
+
+async function selectFile(file) {
+  state.file = file;
+  const data = await loadFileData(file);
+  state.headings = data.headings;
+  state.totalLines = data.totalLines;
+  state.allTasks = data.tasks;
+  state.tasks = data.tasks;
+  state.sectionIdx = "";
+  state.sectionQuery = "";
+  state.index = 0;
+  state.completedCount = 0;
+  state.screen = "review";
+  render();
+}
+
+function renderReview() {
+  const header = container.createDiv({ cls: "rr-header" });
+  const label = currentSectionLabel();
+  header.createEl("h3", { text: label ? `${state.file.basename} › ${label}` : state.file.basename });
+  const back = header.createEl("a", { text: "← change note", cls: "rr-link" });
+  back.addEventListener("click", () => { state.screen = "pick"; render(); });
+
+  if (state.headings.length > 0) {
+    const sectionInput = container.createEl("input", {
+      cls: "rr-input",
+      attr: { type: "text", placeholder: "Filter sections… (leave blank for whole note)" },
+    });
+    sectionInput.value = state.sectionQuery;
+    const sectionList = container.createDiv({ cls: "rr-pick-list rr-section-list" });
+
+    function sectionOptions() {
+      return [{ idx: "", text: "Whole note" }].concat(
+        state.headings.map((h, idx) => ({ idx: String(idx), text: h.text, level: h.level }))
+      );
+    }
+
+    function renderSectionList() {
+      sectionList.empty();
+      const options = sectionOptions();
+      let matches;
+      if (state.sectionQuery.trim() === "") {
+        matches = options;
+      } else {
+        matches = options
+          .map((o) => ({ ...o, score: fuzzyScore(state.sectionQuery, o.text) }))
+          .filter((o) => o.score >= 0)
+          .sort((a, b) => b.score - a.score);
+      }
+      if (matches.length === 0) {
+        sectionList.createDiv({ cls: "rr-empty", text: "No matching sections." });
+        return;
+      }
+      matches.forEach((o) => {
+        const item = sectionList.createDiv({ cls: "rr-pick-item" });
+        if (o.idx === state.sectionIdx) item.addClass("rr-pick-item-active");
+        item.createSpan({ text: (o.level ? "  ".repeat(o.level - 1) : "") + o.text });
+        item.addEventListener("click", () => applySection(o.idx));
+      });
+    }
+
+    sectionInput.addEventListener("input", () => {
+      state.sectionQuery = sectionInput.value;
+      renderSectionList();
+    });
+    sectionInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const first = sectionList.querySelector(".rr-pick-item");
+        if (first) first.dispatchEvent(new MouseEvent("click"));
+      }
+    });
+
+    renderSectionList();
+  }
+
+  if (state.tasks.length === 0) {
+    container.createDiv({ cls: "rr-empty", text: "No open tasks (- [ ]) found in this section." });
+    return;
+  }
+
+  const list = container.createDiv({ cls: "rr-review-list" });
+  state.tasks.forEach((t) => {
+    const row = list.createDiv({ cls: "rr-review-item" });
+    row.createSpan({ text: t.display });
+    row.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
+  });
+
+  const startBtn = container.createEl("button", {
+    cls: "rr-btn rr-btn-primary",
+    text: `Start routine (${state.tasks.length} tasks)`,
+  });
+  startBtn.addEventListener("click", () => {
+    state.index = 0;
+    state.elapsedMs = 0;
+    state.paused = false;
+    state.completedCount = 0;
+    state.screen = "run";
+    render();
+    startTimer();
+  });
+}
+
+function renderRun() {
+  const task = state.tasks[state.index];
+
+  const header = container.createDiv({ cls: "rr-header" });
+  const runLabel = currentSectionLabel();
+  header.createDiv({
+    cls: "rr-progress-label",
+    text: `Task ${state.index + 1} of ${state.tasks.length} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
+  });
+  const back = header.createEl("a", { text: "← change note", cls: "rr-link" });
+  back.addEventListener("click", () => {
+    stopTimer();
+    state.screen = "pick";
+    render();
+  });
+
+  const card = container.createDiv({ cls: "rr-card" });
+  card.createDiv({ cls: "rr-task-text", text: task.display });
+  card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
+
+  const timerRow = card.createDiv({ cls: "rr-timer-row" });
+  refs.timerEl = timerRow.createDiv({ cls: "rr-timer", text: "0:00" });
+
+  const bar = card.createDiv({ cls: "rr-bar" });
+  refs.barFillEl = bar.createDiv({ cls: "rr-bar-fill" });
+
+  const btnRow = card.createDiv({ cls: "rr-btn-row" });
+  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: state.paused ? "Resume" : "Pause" });
+  pauseBtn.addEventListener("click", () => {
+    state.paused = !state.paused;
+    state.lastTick = Date.now();
+    pauseBtn.textContent = state.paused ? "Resume" : "Pause";
+  });
+  const skipBtn = btnRow.createEl("button", { cls: "rr-btn", text: "Skip" });
+  skipBtn.addEventListener("click", () => advance(false));
+  const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
+  doneBtn.addEventListener("click", () => completeCurrentTask());
+
+  const next = state.tasks[state.index + 1];
+  container.createDiv({
+    cls: "rr-next",
+    text: next ? `Next: ${next.display} (${formatDuration(next.estimateMs)})` : "This is the last task.",
+  });
+
+  updateTimerDisplay();
+}
+
+function renderDone() {
+  stopTimer();
+  container.createDiv({ cls: "rr-header" }).createEl("h3", { text: "Routine complete 🎉" });
+  container.createDiv({ text: `${state.completedCount} of ${state.tasks.length} tasks marked done.` });
+  const again = container.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Run another note" });
+  again.addEventListener("click", () => { state.screen = "pick"; render(); });
+}
+
+function advance(wasDone) {
+  if (wasDone) state.completedCount++;
+  state.index++;
+  state.elapsedMs = 0;
+  state.paused = false;
+  state.screen = state.index >= state.tasks.length ? "done" : "run";
+  render();
+}
+
+// Tasks plugin's own toggle command respects custom done symbols and recurrence;
+// it can return multiple lines (e.g. a new recurring instance), so later tasks'
+// stored line numbers are shifted to match.
+async function completeCurrentTask() {
+  if (state.leaveUnchecked) {
+    advance(true);
+    return;
+  }
+
+  const task = state.tasks[state.index];
+  const content = await app.vault.read(state.file);
+  const lines = content.split("\n");
+  const rawLine = lines[task.line];
+
+  const tasksApi = app.plugins.plugins["obsidian-tasks-plugin"]?.apiV1;
+  let replacement;
+  if (tasksApi && typeof tasksApi.executeToggleTaskDoneCommand === "function") {
+    replacement = tasksApi.executeToggleTaskDoneCommand(rawLine, state.file.path);
+  } else {
+    replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}x${p3}${p4}`);
+  }
+
+  const elapsedLabel = formatDuration(state.elapsedMs);
+  const replacementLines = replacement.split("\n").map((line) => {
+    const lm = line.match(TASK_LINE_RE);
+    if (lm && lm[2] !== " ") {
+      return `${line.replace(/\s+$/, "")} 🟰 ${elapsedLabel}`;
+    }
+    return line;
+  });
+  lines.splice(task.line, 1, ...replacementLines);
+  await app.vault.modify(state.file, lines.join("\n"));
+
+  const shift = replacementLines.length - 1;
+  if (shift !== 0) {
+    state.tasks.forEach((t) => { if (t.line > task.line) t.line += shift; });
+  }
+
+  advance(true);
+}
+
+render();
+
+const watchdog = new MutationObserver(() => {
+  if (!document.body.contains(container)) {
+    stopTimer();
+    watchdog.disconnect();
+  }
+});
+watchdog.observe(document.body, { childList: true, subtree: true });
+```
