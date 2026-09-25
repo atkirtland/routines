@@ -78,10 +78,13 @@ const container = dv.container;
 container.empty();
 container.addClass("rr-root");
 
-if (!document.getElementById("routine-runner-style")) {
-  const style = document.createElement("style");
+let style = document.getElementById("routine-runner-style");
+if (!style) {
+  style = document.createElement("style");
   style.id = "routine-runner-style";
-  style.textContent = `
+  document.head.appendChild(style);
+}
+style.textContent = `
     .rr-root { font-size: var(--font-text-size); }
     .rr-header { display:flex; align-items:center; justify-content:space-between; gap:0.75em; margin-bottom:0.5em; }
     .rr-link { cursor:pointer; font-size:0.85em; color:var(--text-muted); }
@@ -96,17 +99,17 @@ if (!document.getElementById("routine-runner-style")) {
     .rr-section-list { max-height:180px; }
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
-    .rr-review-list { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; align-items:center; column-gap:0.6em; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
+    .rr-review-list { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; align-items:stretch; column-gap:0; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
     .rr-review-item { display:contents; }
     .rr-review-item > * { padding:6px 0; border-bottom:1px solid var(--background-modifier-border); box-sizing:border-box; }
     .rr-review-list > .rr-review-item:last-child > * { border-bottom:none; }
     .rr-review-item-disabled > * { opacity:0.45; }
     .rr-review-item-disabled .rr-review-text { text-decoration:line-through; }
-    .rr-review-text { min-width:0; }
+    .rr-review-text { display:flex; align-items:center; min-width:0; }
     .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
-    .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; }
-    .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; }
-    .rr-reorder { display:flex; flex-direction:column; justify-content:center; gap:2px; }
+    .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; padding-left:0.6em; }
+    .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; padding-left:0.6em; }
+    .rr-reorder { display:flex; align-items:center; justify-content:center; gap:2px; padding-left:0.6em; }
     .rr-reorder-btn { line-height:1; font-size:0.7em; padding:2px 6px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
     .rr-reorder-btn:hover:not(:disabled) { background:var(--interactive-hover); }
     .rr-reorder-btn:disabled { opacity:0.3; cursor:default; }
@@ -137,8 +140,6 @@ if (!document.getElementById("routine-runner-style")) {
     .rr-next { margin-top:0.75em; color:var(--text-muted); font-size:0.9em; }
     .rr-progress-label { font-weight:600; }
   `;
-  document.head.appendChild(style);
-}
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 
@@ -197,6 +198,7 @@ async function loadFileData(file) {
       const desc = tm[4];
       tasks.push({
         line: i,
+        sourceLine: line,
         display: desc.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "").replace(/\s{2,}/g, " ").trim(),
         estimateMs: parseEstimateMs(desc),
         goalCount: parseGoalCount(desc),
@@ -705,7 +707,28 @@ async function completeCurrentTask() {
   const task = state.runTasks[state.index];
   const content = await app.vault.read(state.file);
   const lines = content.split("\n");
-  const rawLine = lines[task.line];
+  let rawLine = lines[task.line];
+
+  if (rawLine !== task.sourceLine) {
+    const matches = [];
+    lines.forEach((line, idx) => {
+      if (line === task.sourceLine) matches.push(idx);
+    });
+
+    if (matches.length === 1) {
+      task.line = matches[0];
+      rawLine = lines[task.line];
+    } else {
+      const reason = matches.length === 0
+        ? "it could not be found in the note"
+        : "more than one identical task was found in the note";
+      new Notice(
+        `Could not complete “${task.display}”: ${reason}. Stop and restart the routine to reload the tasks.`,
+        8000,
+      );
+      return;
+    }
+  }
 
   const tasksApi = app.plugins.plugins["obsidian-tasks-plugin"]?.apiV1;
   let replacement;
