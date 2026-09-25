@@ -16,6 +16,8 @@ modified: 2026-09-25T00:00:00-04:00
 <li>If a task also has <code>#tags</code> or Tasks plugin metadata (dates, priority, recurrence, …), put the routine runner marker after the tags and before the metadata: <code>- [ ] Push-ups #fitness 🎯 20 📅 2026-09-25</code>.</li>
 <li>Type into the note field to search and pick a note — the field stays a live search box, so you can click back into it anytime afterward to switch to a different note. If the note has headings, a section field appears the same way, letting you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file); leave it on "Whole note" to run everything.</li>
 <li>Indented checkbox tasks form a tree. Before starting, uncheck any task you want to leave out; disabling a parent temporarily disables its descendants without forgetting their choices. The ↑ / ↓ buttons reorder siblings only, and moving a parent carries its whole subtree for this run without editing the note.</li>
+<li>For long routines, use the sticky setup toolbar to search tasks and enable, disable, collapse, or expand direct matches; dimmed ancestor rows are context only. With a blank search, Enable/Disable affects the top-level gates (preserving descendant choices), while Expand/Collapse applies to the whole tree. Reset restores the current note and section's original task order, selections, search, and expansion state.</li>
+<li>The setup tree supports Vim-style keys: <code>j</code>/<code>k</code> move, <code>h</code>/<code>l</code> collapse/expand, <code>Space</code> or <code>x</code> toggles, <code>Shift-K</code>/<code>Shift-J</code> reorders among siblings, <code>g g</code>/<code>G</code> jumps to the first/last row, and <code>/</code> focuses search.</li>
 <li>The ordinary run visits enabled structural leaves in depth-first order. Task and “Next” labels show the complete path. While working on a leaf, click its breadcrumb ancestors to work on their independent timers/counts; click a lower breadcrumb or <strong>Return to leaf</strong> to resume the saved descendant.</li>
 <li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also records <code>🏁 mm:ss</code> (or <code>🏁 hh:mm:ss</code> past an hour) — and for a task with a count goal, <code>🥅 n</code> alongside it — the actual time (and count) achieved. These are inserted right before any Tasks plugin metadata (dates, priority, recurrence, done date, …), so the order stays description → tags → routine runner markers → Tasks plugin metadata.</li>
 <li><strong>Skip</strong> advances without touching the file.</li>
@@ -101,14 +103,25 @@ style.textContent = `
     .rr-section-list { max-height:180px; }
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
+    .rr-setup-tools { position:sticky; top:0; z-index:2; padding:0.55em; margin-bottom:0.6em; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+    .rr-tools-row { display:flex; align-items:center; flex-wrap:wrap; gap:0.4em; }
+    .rr-tools-row + .rr-tools-row { margin-top:0.45em; }
+    .rr-tools-row .rr-input { flex:1 1 14em; width:auto; margin:0; }
+    .rr-tool-btn { padding:4px 8px; font-size:0.82em; border-radius:5px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
+    .rr-tool-btn:hover { background:var(--interactive-hover); }
+    .rr-reset-btn { margin-left:auto; }
+    .rr-summary { margin-left:auto; color:var(--text-muted); font-size:0.85em; white-space:nowrap; }
     .rr-review-list { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; align-items:stretch; column-gap:0; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
     .rr-review-item { display:contents; }
     .rr-review-item > * { padding:6px 0; border-bottom:1px solid var(--background-modifier-border); box-sizing:border-box; }
     .rr-review-list > .rr-review-item:last-child > * { border-bottom:none; }
     .rr-review-item-disabled > * { opacity:0.45; }
     .rr-review-item-disabled .rr-review-text { text-decoration:line-through; }
+    .rr-review-item-context .rr-review-label { color:var(--text-muted); font-style:italic; }
+    .rr-review-item-active > * { background:var(--background-modifier-hover); }
     .rr-review-text { display:flex; align-items:center; min-width:0; }
-    .rr-review-label { overflow:hidden; text-overflow:ellipsis; }
+    .rr-disclosure { flex:none; width:1.4em; margin-left:0.35em; padding:0; border:0; background:transparent; color:var(--text-muted); cursor:pointer; }
+    .rr-review-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
     .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
     .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; padding-left:0.6em; }
     .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; padding-left:0.6em; }
@@ -156,7 +169,7 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 // on every run would silently dump the user back to the picker mid-routine, so
 // state lives on `window` and survives across those re-executions.
 const RR_STATE_KEY = "__routineRunnerState";
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 
 const defaultState = {
   version: STATE_VERSION,
@@ -180,6 +193,9 @@ const defaultState = {
   retiredIds: [],
   totalLeafCount: 0,
   processedLeafCount: 0,
+  taskQuery: "",
+  collapsedIds: [],
+  setupCursorId: null,
 };
 
 const priorState = window[RR_STATE_KEY];
@@ -551,16 +567,60 @@ function renderSectionCombo() {
   });
 }
 
+function visibleSetupRows() {
+  const query = state.taskQuery.trim().toLowerCase();
+  const collapsed = new Set(state.collapsedIds);
+  const rows = [];
+  function visit(node, siblings, idx, depth, ancestorsEnabled) {
+    const selfMatches = !query || node.display.toLowerCase().includes(query);
+    const descendantMatches = node.children.some(function hasMatch(child) {
+      return child.display.toLowerCase().includes(query) || child.children.some(hasMatch);
+    });
+    if (!selfMatches && !descendantMatches) return;
+    const effectiveHere = ancestorsEnabled && node.selected;
+    rows.push({ node, siblings, idx, depth, ancestorsEnabled, effectiveHere, selfMatches });
+    if (query || !collapsed.has(node.id)) {
+      node.children.forEach((child, childIdx) => visit(child, node.children, childIdx, depth + 1, effectiveHere));
+    }
+  }
+  state.tasks.forEach((node, idx) => visit(node, state.tasks, idx, 0, true));
+  return rows;
+}
+
 function renderTaskList() {
   const list = container.createDiv({ cls: "rr-review-list" });
-  function renderNode(t, siblings, idx, depth, ancestorsEnabled) {
+  list.tabIndex = 0;
+  list.setAttribute("aria-label", "Task tree; use Vim keys j/k, h/l, x, Shift-J/Shift-K, gg/G, and slash");
+  const rows = visibleSetupRows();
+  if (!rows.some((row) => row.node.id === state.setupCursorId)) {
+    state.setupCursorId = rows[0]?.node.id ?? null;
+  }
+  if (rows.length === 0) {
+    list.createDiv({ cls: "rr-empty", text: "No matching tasks." });
+    return;
+  }
+  rows.forEach(({ node: t, siblings, idx, depth, ancestorsEnabled, effectiveHere: isEffective, selfMatches }) => {
     const row = list.createDiv({ cls: "rr-review-item" });
-    const isEffective = ancestorsEnabled && t.selected;
     if (!isEffective) row.addClass("rr-review-item-disabled");
+    if (state.taskQuery.trim() && !selfMatches) row.addClass("rr-review-item-context");
+    if (t.id === state.setupCursorId) row.addClass("rr-review-item-active");
 
     const text = row.createSpan({ cls: "rr-review-text" });
     text.style.paddingLeft = `${depth * 1.25}em`;
     text.createSpan({ cls: "rr-review-label", text: t.display });
+    if (t.children.length) {
+      const disclosure = text.createEl("button", {
+        cls: "rr-disclosure",
+        text: state.collapsedIds.includes(t.id) && !state.taskQuery ? "▸" : "▾",
+        attr: { "aria-label": state.collapsedIds.includes(t.id) ? "Expand branch" : "Collapse branch" },
+      });
+      disclosure.addEventListener("click", (e) => { e.stopPropagation(); toggleCollapsed(t.id); });
+    }
+    text.addEventListener("click", () => {
+      state.setupCursorId = t.id;
+      render();
+      requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
+    });
 
     const badges = row.createDiv({ cls: "rr-badge-group" });
     if (t.goalCount != null) {
@@ -590,9 +650,113 @@ function renderTaskList() {
       [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
       render();
     });
-    t.children.forEach((child, childIdx) => renderNode(child, t.children, childIdx, depth + 1, isEffective));
-  }
-  state.tasks.forEach((t, idx) => renderNode(t, state.tasks, idx, 0, true));
+  });
+
+  let pendingG = false;
+  list.addEventListener("keydown", (e) => {
+    if (["INPUT", "BUTTON"].includes(e.target.tagName)) return;
+    const current = rows.findIndex((row) => row.node.id === state.setupCursorId);
+    let nextIndex = current;
+    if (e.key === "j") nextIndex = Math.min(rows.length - 1, current + 1);
+    else if (e.key === "k") nextIndex = Math.max(0, current - 1);
+    else if (e.key === "G") nextIndex = rows.length - 1;
+    else if (e.key === "g") {
+      if (pendingG) nextIndex = 0;
+      pendingG = !pendingG;
+      e.preventDefault();
+      if (nextIndex !== current) {
+        state.setupCursorId = rows[nextIndex].node.id;
+        render();
+        requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
+      }
+      return;
+    } else if (e.key === "/") {
+      e.preventDefault();
+      container.querySelector(".rr-task-search")?.focus();
+      return;
+    } else if ([" ", "x"].includes(e.key)) {
+      const item = rows[current];
+      if (item?.ancestorsEnabled) item.node.selected = !item.node.selected;
+    } else if (e.key === "h") {
+      const item = rows[current];
+      if (item?.node.children.length && !state.collapsedIds.includes(item.node.id)) state.collapsedIds.push(item.node.id);
+    } else if (e.key === "l") {
+      state.collapsedIds = state.collapsedIds.filter((id) => id !== rows[current]?.node.id);
+    } else if (e.key === "K" || e.key === "J") {
+      const item = rows[current];
+      if (item?.ancestorsEnabled) {
+        const delta = e.key === "K" ? -1 : 1;
+        const target = item.idx + delta;
+        if (target >= 0 && target < item.siblings.length) {
+          [item.siblings[item.idx], item.siblings[target]] = [item.siblings[target], item.siblings[item.idx]];
+        }
+      }
+    } else return;
+    pendingG = false;
+    e.preventDefault();
+    if (nextIndex !== current && rows[nextIndex]) state.setupCursorId = rows[nextIndex].node.id;
+    render();
+    requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
+  });
+}
+
+function toggleCollapsed(id) {
+  state.collapsedIds = state.collapsedIds.includes(id)
+    ? state.collapsedIds.filter((item) => item !== id)
+    : [...state.collapsedIds, id];
+  render();
+}
+
+function renderSetupTools() {
+  const tools = container.createDiv({ cls: "rr-setup-tools" });
+  const top = tools.createDiv({ cls: "rr-tools-row" });
+  const search = top.createEl("input", {
+    cls: "rr-input rr-task-search",
+    attr: { type: "search", placeholder: "Search tasks…  (Vim: /)" },
+  });
+  search.value = state.taskQuery;
+  search.addEventListener("input", () => {
+    state.taskQuery = search.value;
+    render();
+    requestAnimationFrame(() => {
+      const next = container.querySelector(".rr-task-search");
+      if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length); }
+    });
+  });
+  const leaves = enabledLeaves(state.tasks);
+  const estimate = leaves.reduce((sum, leaf) => sum + leaf.estimateMs, 0);
+  top.createSpan({ cls: "rr-summary", text: `${leaves.length} leaf task${leaves.length === 1 ? "" : "s"} · ${formatDuration(estimate)}` });
+
+  const actions = tools.createDiv({ cls: "rr-tools-row" });
+  const matchingNodes = () => visibleSetupRows().filter((row) => row.selfMatches).map((row) => row.node);
+  const selectionNodes = () => state.taskQuery.trim() ? matchingNodes() : state.tasks;
+  const structureNodes = () => state.taskQuery.trim() ? matchingNodes() : flatten(state.tasks);
+  const selectBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Enable" });
+  selectBtn.addEventListener("click", () => { selectionNodes().forEach((node) => { node.selected = true; }); render(); });
+  const clearBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Disable" });
+  clearBtn.addEventListener("click", () => { selectionNodes().forEach((node) => { node.selected = false; }); render(); });
+  const expandBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Expand" });
+  expandBtn.addEventListener("click", () => {
+    const ids = new Set(structureNodes().map((node) => node.id));
+    state.collapsedIds = state.collapsedIds.filter((id) => !ids.has(id));
+    render();
+  });
+  const collapseBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Collapse" });
+  collapseBtn.addEventListener("click", () => {
+    state.collapsedIds = [...new Set([
+      ...state.collapsedIds,
+      ...structureNodes().filter((node) => node.children.length).map((node) => node.id),
+    ])];
+    render();
+  });
+  const resetBtn = actions.createEl("button", { cls: "rr-tool-btn rr-reset-btn", text: "Reset" });
+  resetBtn.addEventListener("click", () => {
+    state.taskQuery = "";
+    state.collapsedIds = [];
+    state.setupCursorId = null;
+    recomputeTasksForSection();
+    render();
+  });
 }
 
 function renderSetup() {
@@ -625,12 +789,15 @@ function renderSetup() {
     return;
   }
 
+  renderSetupTools();
   renderTaskList();
 
   const selectedCount = enabledLeaves(state.tasks).length;
   const startBtn = container.createEl("button", {
     cls: "rr-btn rr-btn-primary",
-    text: selectedCount > 0 ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})` : "Select at least one leaf task",
+    text: selectedCount > 0
+      ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})`
+      : "Select at least one leaf task",
   });
   startBtn.disabled = selectedCount === 0;
   startBtn.addEventListener("click", () => {
@@ -653,6 +820,9 @@ function renderSetup() {
 async function selectFile(file) {
   state.file = file;
   state.noteQuery = "";
+  state.taskQuery = "";
+  state.collapsedIds = [];
+  state.setupCursorId = null;
   const data = await loadFileData(file);
   state.headings = data.headings;
   state.totalLines = data.totalLines;
