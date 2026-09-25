@@ -2,7 +2,7 @@
 aliases:
   - Routine Runner
 created: 2026-09-19T15:14:37-04:00
-modified: 2026-09-24T00:00:00-04:00
+modified: 2026-09-25T00:00:00-04:00
 ---
 
 # Routine Runner
@@ -14,13 +14,14 @@ modified: 2026-09-24T00:00:00-04:00
 <li>Add a time goal to a task with <code>⏱️ mm:ss</code> or <code>⏱️ hh:mm:ss</code>, e.g. <code>- [ ] Stretch ⏱️ 10:00</code>. No marker → defaults to 5:00.</li>
 <li>Give a task a count goal instead with <code>🎯 n</code>, e.g. <code>- [ ] Push-ups 🎯 20</code>. While it's running, tap the − / + buttons or click the number to log how many you actually did; the current count and the goal are shown side by side.</li>
 <li>If a task also has <code>#tags</code> or Tasks plugin metadata (dates, priority, recurrence, …), put the routine runner marker after the tags and before the metadata: <code>- [ ] Push-ups #fitness 🎯 20 📅 2026-09-25</code>.</li>
-<li>After picking a note, an optional section finder lets you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file). Leave it blank for the whole note.</li>
+<li>Type into the note field to search and pick a note — the field stays a live search box, so you can click back into it anytime afterward to switch to a different note. If the note has headings, a section field appears the same way, letting you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file); leave it on "Whole note" to run everything.</li>
+<li>Before starting, uncheck any task you want to leave out of the run, and use the ↑ / ↓ buttons to put the remaining tasks in whatever order you want to do them.</li>
 <li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also records <code>🏁 mm:ss</code> (or <code>🏁 hh:mm:ss</code> past an hour) — and for a task with a count goal, <code>🥅 n</code> alongside it — the actual time (and count) achieved. These are inserted right before any Tasks plugin metadata (dates, priority, recurrence, done date, …), so the order stays description → tags → routine runner markers → Tasks plugin metadata.</li>
 <li><strong>Skip</strong> advances without touching the file.</li>
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
 <li>Timer keeps counting past the estimate into negative time, shown in red.</li>
 <li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
-<li>Progress is kept outside this code block, so Dataview's periodic auto-refresh (it re-runs every <code>dataviewjs</code> block whenever any file in the vault changes) won't bump you back to the picker mid-routine. It stays in place until you finish, click "← change note", or restart Obsidian.</li>
+<li>Progress is kept outside this code block, so Dataview's periodic auto-refresh (it re-runs every <code>dataviewjs</code> block whenever any file in the vault changes) won't bump you back to the picker mid-routine. It stays in place until you finish, click Stop, or restart Obsidian.</li>
 </ul>
 </details>
 
@@ -82,23 +83,33 @@ if (!document.getElementById("routine-runner-style")) {
   style.id = "routine-runner-style";
   style.textContent = `
     .rr-root { font-size: var(--font-text-size); }
-    .rr-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5em; }
+    .rr-header { display:flex; align-items:center; justify-content:space-between; gap:0.75em; margin-bottom:0.5em; }
     .rr-link { cursor:pointer; font-size:0.85em; color:var(--text-muted); }
     .rr-link:hover { color:var(--text-normal); }
     .rr-input { width:100%; box-sizing:border-box; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); margin-bottom:0.5em; }
     .rr-toggle-row { display:flex; align-items:center; gap:0.5em; margin-bottom:0.75em; color:var(--text-muted); font-size:0.9em; }
     .rr-toggle-row label { cursor:pointer; }
-    .rr-pick-list { max-height:300px; overflow-y:auto; border:1px solid var(--background-modifier-border); border-radius:6px; }
+    .rr-pick-list { max-height:300px; overflow-y:auto; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
     .rr-pick-item { display:flex; justify-content:space-between; gap:1em; padding:6px 10px; cursor:pointer; }
     .rr-pick-item:hover { background:var(--background-modifier-hover); }
     .rr-pick-item-active { background:var(--background-modifier-hover); font-weight:600; }
-    .rr-section-list { max-height:180px; margin-bottom:0.75em; }
+    .rr-section-list { max-height:180px; }
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
-    .rr-review-list { border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
-    .rr-review-item { display:flex; justify-content:space-between; gap:1em; padding:6px 10px; border-bottom:1px solid var(--background-modifier-border); }
-    .rr-review-item:last-child { border-bottom:none; }
+    .rr-review-list { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; align-items:center; column-gap:0.6em; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
+    .rr-review-item { display:contents; }
+    .rr-review-item > * { padding:6px 0; border-bottom:1px solid var(--background-modifier-border); box-sizing:border-box; }
+    .rr-review-list > .rr-review-item:last-child > * { border-bottom:none; }
+    .rr-review-item-disabled > * { opacity:0.45; }
+    .rr-review-item-disabled .rr-review-text { text-decoration:line-through; }
+    .rr-review-text { min-width:0; }
     .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
+    .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; }
+    .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; }
+    .rr-reorder { display:flex; flex-direction:column; justify-content:center; gap:2px; }
+    .rr-reorder-btn { line-height:1; font-size:0.7em; padding:2px 6px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
+    .rr-reorder-btn:hover:not(:disabled) { background:var(--interactive-hover); }
+    .rr-reorder-btn:disabled { opacity:0.3; cursor:default; }
     .rr-card { border:1px solid var(--background-modifier-border); border-radius:8px; padding:1em; background:var(--background-secondary); }
     .rr-task-text { font-size:1.15em; font-weight:600; margin-bottom:0.25em; }
     .rr-est { color:var(--text-muted); font-size:0.85em; margin-bottom:0.75em; }
@@ -115,12 +126,14 @@ if (!document.getElementById("routine-runner-style")) {
     .rr-count-sep { color:var(--text-muted); font-size:1.4em; }
     .rr-count-goal { color:var(--text-muted); font-size:1.4em; font-weight:600; }
     .rr-count-input { font-size:1.8em; font-weight:700; width:3.2em; text-align:center; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); }
-    .rr-badge-group { display:flex; gap:0.4em; flex:none; }
     .rr-btn-row { display:flex; gap:0.5em; }
     .rr-btn { flex:1; padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
     .rr-btn:hover { background:var(--interactive-hover); }
+    .rr-btn:disabled { opacity:0.5; cursor:default; }
     .rr-btn-primary { background:var(--interactive-accent); color:var(--text-on-accent); border-color:var(--interactive-accent); }
     .rr-btn-primary:hover { background:var(--interactive-accent-hover); }
+    .rr-btn-stop { flex:none; padding:4px 14px; font-size:0.85em; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
+    .rr-btn-stop:hover { background:var(--interactive-hover); }
     .rr-next { margin-top:0.75em; color:var(--text-muted); font-size:0.9em; }
     .rr-progress-label { font-weight:600; }
   `;
@@ -137,10 +150,11 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const RR_STATE_KEY = "__routineRunnerState";
 
 const defaultState = {
-  screen: "pick",
-  query: "",
+  screen: "setup",
+  noteQuery: "",
   file: null,
   tasks: [],
+  runTasks: [],
   index: 0,
   paused: false,
   elapsedMs: 0,
@@ -153,11 +167,20 @@ const defaultState = {
   totalLines: 0,
   allTasks: [],
   sectionIdx: "",
-  sectionQuery: "",
 };
 
 const state = window[RR_STATE_KEY] || defaultState;
 window[RR_STATE_KEY] = state;
+
+// Migrate state shape from an older version of this script that may still be
+// live in `window` from before a code edit — Dataview reruns the block in
+// place, it doesn't reset globals.
+if (state.noteQuery === undefined) state.noteQuery = state.query || "";
+if (state.runTasks === undefined) state.runTasks = [];
+if (state.screen === "pick" || state.screen === "review") state.screen = "setup";
+if (Array.isArray(state.tasks)) {
+  state.tasks = state.tasks.map((t) => (t.selected === undefined ? { ...t, selected: true } : t));
+}
 
 let refs = {};
 
@@ -203,15 +226,20 @@ function currentSectionLabel() {
   return h ? h.text : null;
 }
 
+function recomputeTasksForSection() {
+  if (state.sectionIdx === "") {
+    state.tasks = state.allTasks.map((t) => ({ ...t, selected: true }));
+  } else {
+    const range = sectionLineRange(state.headings, state.totalLines, parseInt(state.sectionIdx, 10));
+    state.tasks = state.allTasks
+      .filter((t) => t.line >= range.start && t.line < range.end)
+      .map((t) => ({ ...t, selected: true }));
+  }
+}
+
 function applySection(idx) {
   state.sectionIdx = idx;
-  state.sectionQuery = "";
-  if (idx === "") {
-    state.tasks = state.allTasks;
-  } else {
-    const range = sectionLineRange(state.headings, state.totalLines, parseInt(idx, 10));
-    state.tasks = state.allTasks.filter((t) => t.line >= range.start && t.line < range.end);
-  }
+  recomputeTasksForSection();
   render();
 }
 
@@ -283,7 +311,7 @@ function tick() {
 
 function updateTimerDisplay() {
   if (state.screen !== "run" || !refs.timerEl) return;
-  const task = state.tasks[state.index];
+  const task = state.runTasks[state.index];
   if (!task) return;
   const estimateMs = task.estimateMs;
   const remainingMs = estimateMs - state.elapsedMs;
@@ -298,13 +326,184 @@ function updateTimerDisplay() {
 function render() {
   container.empty();
   refs = {};
-  if (state.screen === "pick") renderPick();
-  else if (state.screen === "review") renderReview();
-  else if (state.screen === "run") renderRun();
+  if (state.screen === "run") renderRun();
   else if (state.screen === "done") renderDone();
+  else renderSetup();
 }
 
-function renderPick() {
+function renderNoteCombo() {
+  const input = container.createEl("input", {
+    cls: "rr-input",
+    attr: { type: "text", placeholder: "Type a note name…" },
+  });
+  input.value = state.file ? state.file.basename : state.noteQuery;
+  const list = container.createDiv({ cls: "rr-pick-list" });
+  list.style.display = "none";
+
+  function renderList(query) {
+    list.empty();
+    const files = app.vault.getMarkdownFiles();
+    let matches;
+    if (!query || query.trim() === "") {
+      matches = files
+        .slice()
+        .sort((a, b) => a.basename.localeCompare(b.basename))
+        .slice(0, 25)
+        .map((f) => ({ file: f }));
+    } else {
+      matches = files
+        .map((f) => ({ file: f, score: fuzzyScore(query, f.basename) }))
+        .filter((m) => m.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 25);
+    }
+    if (matches.length === 0) {
+      list.createDiv({ cls: "rr-empty", text: "No matching notes." });
+      return;
+    }
+    matches.forEach(({ file }) => {
+      const item = list.createDiv({ cls: "rr-pick-item" });
+      item.createSpan({ text: file.basename });
+      if (file.parent && file.parent.path !== "/") {
+        item.createSpan({ cls: "rr-pick-path", text: file.parent.path });
+      }
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        list.style.display = "none";
+        selectFile(file);
+      });
+    });
+  }
+
+  input.addEventListener("focus", () => {
+    list.style.display = "block";
+    renderList("");
+  });
+  input.addEventListener("input", () => {
+    state.noteQuery = input.value;
+    renderList(input.value);
+  });
+  input.addEventListener("blur", () => {
+    list.style.display = "none";
+    input.value = state.file ? state.file.basename : state.noteQuery;
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = list.querySelector(".rr-pick-item");
+      if (first) first.dispatchEvent(new MouseEvent("mousedown"));
+    } else if (e.key === "Escape") {
+      list.style.display = "none";
+      input.blur();
+    }
+  });
+
+  if (!state.file) input.focus();
+}
+
+function renderSectionCombo() {
+  const input = container.createEl("input", {
+    cls: "rr-input",
+    attr: { type: "text", placeholder: "Filter sections… (leave blank for whole note)" },
+  });
+  input.value = currentSectionLabel() ?? "Whole note";
+  const list = container.createDiv({ cls: "rr-pick-list rr-section-list" });
+  list.style.display = "none";
+
+  function options() {
+    return [{ idx: "", text: "Whole note" }].concat(
+      state.headings.map((h, idx) => ({ idx: String(idx), text: h.text, level: h.level }))
+    );
+  }
+
+  function renderList(query) {
+    list.empty();
+    const opts = options();
+    let matches;
+    if (!query || query.trim() === "") {
+      matches = opts;
+    } else {
+      matches = opts
+        .map((o) => ({ ...o, score: fuzzyScore(query, o.text) }))
+        .filter((o) => o.score >= 0)
+        .sort((a, b) => b.score - a.score);
+    }
+    if (matches.length === 0) {
+      list.createDiv({ cls: "rr-empty", text: "No matching sections." });
+      return;
+    }
+    matches.forEach((o) => {
+      const item = list.createDiv({ cls: "rr-pick-item" });
+      if (o.idx === state.sectionIdx) item.addClass("rr-pick-item-active");
+      item.createSpan({ text: (o.level ? "  ".repeat(o.level - 1) : "") + o.text });
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        list.style.display = "none";
+        applySection(o.idx);
+      });
+    });
+  }
+
+  input.addEventListener("focus", () => {
+    list.style.display = "block";
+    renderList("");
+  });
+  input.addEventListener("input", () => {
+    renderList(input.value);
+  });
+  input.addEventListener("blur", () => {
+    list.style.display = "none";
+    input.value = currentSectionLabel() ?? "Whole note";
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = list.querySelector(".rr-pick-item");
+      if (first) first.dispatchEvent(new MouseEvent("mousedown"));
+    } else if (e.key === "Escape") {
+      list.style.display = "none";
+      input.blur();
+    }
+  });
+}
+
+function renderTaskList() {
+  const list = container.createDiv({ cls: "rr-review-list" });
+  state.tasks.forEach((t, idx) => {
+    const row = list.createDiv({ cls: "rr-review-item" });
+    if (!t.selected) row.addClass("rr-review-item-disabled");
+
+    row.createSpan({ cls: "rr-review-text", text: t.display });
+
+    const badges = row.createDiv({ cls: "rr-badge-group" });
+    if (t.goalCount != null) {
+      badges.createSpan({ cls: "rr-badge", text: `🎯 ${t.goalCount}` });
+    }
+    badges.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
+
+    const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
+    const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
+    checkbox.checked = t.selected;
+    checkbox.addEventListener("change", () => {
+      t.selected = checkbox.checked;
+      render();
+    });
+
+    const reorder = row.createDiv({ cls: "rr-reorder" });
+    const upBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" });
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener("click", () => {
+      [state.tasks[idx - 1], state.tasks[idx]] = [state.tasks[idx], state.tasks[idx - 1]];
+      render();
+    });
+    const downBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" });
+    downBtn.disabled = idx === state.tasks.length - 1;
+    downBtn.addEventListener("click", () => {
+      [state.tasks[idx], state.tasks[idx + 1]] = [state.tasks[idx + 1], state.tasks[idx]];
+      render();
+    });
+  });
+}
+
+function renderSetup() {
   container.createEl("h3", { text: "Run a routine" });
 
   const toggleRow = container.createDiv({ cls: "rr-toggle-row" });
@@ -321,131 +520,12 @@ function renderPick() {
     attr: { for: toggleId },
   });
 
-  const input = container.createEl("input", {
-    cls: "rr-input",
-    attr: { type: "text", placeholder: "Type a note name…" },
-  });
-  input.value = state.query;
-  const list = container.createDiv({ cls: "rr-pick-list" });
+  renderNoteCombo();
 
-  function renderList() {
-    list.empty();
-    const files = app.vault.getMarkdownFiles();
-    let matches;
-    if (state.query.trim() === "") {
-      matches = files
-        .slice()
-        .sort((a, b) => a.basename.localeCompare(b.basename))
-        .slice(0, 25)
-        .map((f) => ({ file: f }));
-    } else {
-      matches = files
-        .map((f) => ({ file: f, score: fuzzyScore(state.query, f.basename) }))
-        .filter((m) => m.score >= 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 25);
-    }
-    if (matches.length === 0) {
-      list.createDiv({ cls: "rr-empty", text: "No matching notes." });
-      return;
-    }
-    matches.forEach(({ file }) => {
-      const item = list.createDiv({ cls: "rr-pick-item" });
-      item.createSpan({ text: file.basename });
-      if (file.parent && file.parent.path !== "/") {
-        item.createSpan({ cls: "rr-pick-path", text: file.parent.path });
-      }
-      item.addEventListener("click", () => selectFile(file));
-    });
-  }
-
-  input.addEventListener("input", () => {
-    state.query = input.value;
-    renderList();
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      const first = list.querySelector(".rr-pick-item");
-      if (first) first.dispatchEvent(new MouseEvent("click"));
-    }
-  });
-
-  renderList();
-  input.focus();
-}
-
-async function selectFile(file) {
-  state.file = file;
-  const data = await loadFileData(file);
-  state.headings = data.headings;
-  state.totalLines = data.totalLines;
-  state.allTasks = data.tasks;
-  state.tasks = data.tasks;
-  state.sectionIdx = "";
-  state.sectionQuery = "";
-  state.index = 0;
-  state.completedCount = 0;
-  state.screen = "review";
-  render();
-}
-
-function renderReview() {
-  const header = container.createDiv({ cls: "rr-header" });
-  const label = currentSectionLabel();
-  header.createEl("h3", { text: label ? `${state.file.basename} › ${label}` : state.file.basename });
-  const back = header.createEl("a", { text: "← change note", cls: "rr-link" });
-  back.addEventListener("click", () => { state.screen = "pick"; render(); });
+  if (!state.file) return;
 
   if (state.headings.length > 0) {
-    const sectionInput = container.createEl("input", {
-      cls: "rr-input",
-      attr: { type: "text", placeholder: "Filter sections… (leave blank for whole note)" },
-    });
-    sectionInput.value = state.sectionQuery;
-    const sectionList = container.createDiv({ cls: "rr-pick-list rr-section-list" });
-
-    function sectionOptions() {
-      return [{ idx: "", text: "Whole note" }].concat(
-        state.headings.map((h, idx) => ({ idx: String(idx), text: h.text, level: h.level }))
-      );
-    }
-
-    function renderSectionList() {
-      sectionList.empty();
-      const options = sectionOptions();
-      let matches;
-      if (state.sectionQuery.trim() === "") {
-        matches = options;
-      } else {
-        matches = options
-          .map((o) => ({ ...o, score: fuzzyScore(state.sectionQuery, o.text) }))
-          .filter((o) => o.score >= 0)
-          .sort((a, b) => b.score - a.score);
-      }
-      if (matches.length === 0) {
-        sectionList.createDiv({ cls: "rr-empty", text: "No matching sections." });
-        return;
-      }
-      matches.forEach((o) => {
-        const item = sectionList.createDiv({ cls: "rr-pick-item" });
-        if (o.idx === state.sectionIdx) item.addClass("rr-pick-item-active");
-        item.createSpan({ text: (o.level ? "  ".repeat(o.level - 1) : "") + o.text });
-        item.addEventListener("click", () => applySection(o.idx));
-      });
-    }
-
-    sectionInput.addEventListener("input", () => {
-      state.sectionQuery = sectionInput.value;
-      renderSectionList();
-    });
-    sectionInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const first = sectionList.querySelector(".rr-pick-item");
-        if (first) first.dispatchEvent(new MouseEvent("click"));
-      }
-    });
-
-    renderSectionList();
+    renderSectionCombo();
   }
 
   if (state.tasks.length === 0) {
@@ -453,22 +533,16 @@ function renderReview() {
     return;
   }
 
-  const list = container.createDiv({ cls: "rr-review-list" });
-  state.tasks.forEach((t) => {
-    const row = list.createDiv({ cls: "rr-review-item" });
-    row.createSpan({ text: t.display });
-    const badges = row.createDiv({ cls: "rr-badge-group" });
-    badges.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
-    if (t.goalCount != null) {
-      badges.createSpan({ cls: "rr-badge", text: `🎯 ${t.goalCount}` });
-    }
-  });
+  renderTaskList();
 
+  const selectedCount = state.tasks.filter((t) => t.selected).length;
   const startBtn = container.createEl("button", {
     cls: "rr-btn rr-btn-primary",
-    text: `Start routine (${state.tasks.length} tasks)`,
+    text: selectedCount > 0 ? `Start routine (${selectedCount} task${selectedCount === 1 ? "" : "s"})` : "Select at least one task",
   });
+  startBtn.disabled = selectedCount === 0;
   startBtn.addEventListener("click", () => {
+    state.runTasks = state.tasks.filter((t) => t.selected);
     state.index = 0;
     state.elapsedMs = 0;
     state.count = 0;
@@ -480,21 +554,46 @@ function renderReview() {
   });
 }
 
+async function selectFile(file) {
+  state.file = file;
+  state.noteQuery = "";
+  const data = await loadFileData(file);
+  state.headings = data.headings;
+  state.totalLines = data.totalLines;
+  state.allTasks = data.tasks;
+  state.sectionIdx = "";
+  recomputeTasksForSection();
+  state.index = 0;
+  state.completedCount = 0;
+  state.screen = "setup";
+  render();
+}
+
+async function stopRoutine() {
+  stopTimer();
+  if (state.file) {
+    const data = await loadFileData(state.file);
+    state.headings = data.headings;
+    state.totalLines = data.totalLines;
+    state.allTasks = data.tasks;
+    recomputeTasksForSection();
+  }
+  state.runTasks = [];
+  state.screen = "setup";
+  render();
+}
+
 function renderRun() {
-  const task = state.tasks[state.index];
+  const task = state.runTasks[state.index];
 
   const header = container.createDiv({ cls: "rr-header" });
   const runLabel = currentSectionLabel();
   header.createDiv({
     cls: "rr-progress-label",
-    text: `Task ${state.index + 1} of ${state.tasks.length} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
+    text: `Task ${state.index + 1} of ${state.runTasks.length} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
   });
-  const back = header.createEl("a", { text: "← change note", cls: "rr-link" });
-  back.addEventListener("click", () => {
-    stopTimer();
-    state.screen = "pick";
-    render();
-  });
+  const stopBtn = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
+  stopBtn.addEventListener("click", () => stopRoutine());
 
   const card = container.createDiv({ cls: "rr-card" });
   card.createDiv({ cls: "rr-task-text", text: task.display });
@@ -556,7 +655,7 @@ function renderRun() {
   const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
   doneBtn.addEventListener("click", () => completeCurrentTask());
 
-  const next = state.tasks[state.index + 1];
+  const next = state.runTasks[state.index + 1];
   container.createDiv({
     cls: "rr-next",
     text: next ? `Next: ${next.display} (${formatDuration(next.estimateMs)})` : "This is the last task.",
@@ -568,9 +667,20 @@ function renderRun() {
 function renderDone() {
   stopTimer();
   container.createDiv({ cls: "rr-header" }).createEl("h3", { text: "Routine complete 🎉" });
-  container.createDiv({ text: `${state.completedCount} of ${state.tasks.length} tasks marked done.` });
+  container.createDiv({ text: `${state.completedCount} of ${state.runTasks.length} tasks marked done.` });
   const again = container.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Run another note" });
-  again.addEventListener("click", () => { state.screen = "pick"; render(); });
+  again.addEventListener("click", () => {
+    state.file = null;
+    state.noteQuery = "";
+    state.headings = [];
+    state.totalLines = 0;
+    state.allTasks = [];
+    state.tasks = [];
+    state.runTasks = [];
+    state.sectionIdx = "";
+    state.screen = "setup";
+    render();
+  });
 }
 
 function advance(wasDone) {
@@ -579,7 +689,7 @@ function advance(wasDone) {
   state.elapsedMs = 0;
   state.count = 0;
   state.paused = false;
-  state.screen = state.index >= state.tasks.length ? "done" : "run";
+  state.screen = state.index >= state.runTasks.length ? "done" : "run";
   render();
 }
 
@@ -592,7 +702,7 @@ async function completeCurrentTask() {
     return;
   }
 
-  const task = state.tasks[state.index];
+  const task = state.runTasks[state.index];
   const content = await app.vault.read(state.file);
   const lines = content.split("\n");
   const rawLine = lines[task.line];
@@ -619,7 +729,7 @@ async function completeCurrentTask() {
 
   const shift = replacementLines.length - 1;
   if (shift !== 0) {
-    state.tasks.forEach((t) => { if (t.line > task.line) t.line += shift; });
+    state.runTasks.forEach((t) => { if (t.line > task.line) t.line += shift; });
   }
 
   advance(true);
