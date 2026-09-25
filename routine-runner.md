@@ -9,15 +9,17 @@ modified: 2026-09-25T00:00:00-04:00
 
 <details>
 <summary>How it works</summary>
-<p>Pick a note, then step through its open tasks one at a time with a countdown timer.</p>
+<p>Pick a note, then step through its enabled open leaf tasks, depth-first, with a countdown timer.</p>
 <ul>
 <li>Add a time goal to a task with <code>⏱️ mm:ss</code> or <code>⏱️ hh:mm:ss</code>, e.g. <code>- [ ] Stretch ⏱️ 10:00</code>. No marker → defaults to 5:00.</li>
 <li>Give a task a count goal instead with <code>🎯 n</code>, e.g. <code>- [ ] Push-ups 🎯 20</code>. While it's running, tap the − / + buttons or click the number to log how many you actually did; the current count and the goal are shown side by side.</li>
 <li>If a task also has <code>#tags</code> or Tasks plugin metadata (dates, priority, recurrence, …), put the routine runner marker after the tags and before the metadata: <code>- [ ] Push-ups #fitness 🎯 20 📅 2026-09-25</code>.</li>
 <li>Type into the note field to search and pick a note — the field stays a live search box, so you can click back into it anytime afterward to switch to a different note. If the note has headings, a section field appears the same way, letting you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file); leave it on "Whole note" to run everything.</li>
-<li>Before starting, uncheck any task you want to leave out of the run, and use the ↑ / ↓ buttons to put the remaining tasks in whatever order you want to do them.</li>
+<li>Indented checkbox tasks form a tree. Before starting, uncheck any task you want to leave out; disabling a parent temporarily disables its descendants without forgetting their choices. The ↑ / ↓ buttons reorder siblings only, and moving a parent carries its whole subtree for this run without editing the note.</li>
+<li>The ordinary run visits enabled structural leaves in depth-first order. Task and “Next” labels show the complete path. While working on a leaf, click its breadcrumb ancestors to work on their independent timers/counts; click a lower breadcrumb or <strong>Return to leaf</strong> to resume the saved descendant.</li>
 <li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also records <code>🏁 mm:ss</code> (or <code>🏁 hh:mm:ss</code> past an hour) — and for a task with a count goal, <code>🥅 n</code> alongside it — the actual time (and count) achieved. These are inserted right before any Tasks plugin metadata (dates, priority, recurrence, done date, …), so the order stays description → tags → routine runner markers → Tasks plugin metadata.</li>
 <li><strong>Skip</strong> advances without touching the file.</li>
+<li>Using <strong>Done</strong> or <strong>Skip</strong> while focused on an ancestor retires that ancestor's remaining branch for this run and advances to the first leaf after it. Done edits only the focused ancestor; it does not check descendants.</li>
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
 <li>Timer keeps counting past the estimate into negative time, shown in red.</li>
 <li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
@@ -106,6 +108,7 @@ style.textContent = `
     .rr-review-item-disabled > * { opacity:0.45; }
     .rr-review-item-disabled .rr-review-text { text-decoration:line-through; }
     .rr-review-text { display:flex; align-items:center; min-width:0; }
+    .rr-review-label { overflow:hidden; text-overflow:ellipsis; }
     .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
     .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; padding-left:0.6em; }
     .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; padding-left:0.6em; }
@@ -115,6 +118,10 @@ style.textContent = `
     .rr-reorder-btn:disabled { opacity:0.3; cursor:default; }
     .rr-card { border:1px solid var(--background-modifier-border); border-radius:8px; padding:1em; background:var(--background-secondary); }
     .rr-task-text { font-size:1.15em; font-weight:600; margin-bottom:0.25em; }
+    .rr-crumb { cursor:pointer; color:var(--interactive-accent); }
+    .rr-crumb-current { cursor:default; color:var(--text-normal); }
+    .rr-crumb-sep { color:var(--text-faint); padding:0 0.35em; }
+    .rr-return { margin:0 0 0.75em; padding:3px 9px; font-size:0.85em; }
     .rr-est { color:var(--text-muted); font-size:0.85em; margin-bottom:0.75em; }
     .rr-timer-row { text-align:center; }
     .rr-timer { font-size:2.2em; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text-normal); }
@@ -149,17 +156,16 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 // on every run would silently dump the user back to the picker mid-routine, so
 // state lives on `window` and survives across those re-executions.
 const RR_STATE_KEY = "__routineRunnerState";
+const STATE_VERSION = 2;
 
 const defaultState = {
+  version: STATE_VERSION,
   screen: "setup",
   noteQuery: "",
   file: null,
   tasks: [],
   runTasks: [],
   index: 0,
-  paused: false,
-  elapsedMs: 0,
-  count: 0,
   lastTick: 0,
   intervalId: null,
   completedCount: 0,
@@ -168,20 +174,20 @@ const defaultState = {
   totalLines: 0,
   allTasks: [],
   sectionIdx: "",
+  focusId: null,
+  activeLeafId: null,
+  sessions: {},
+  retiredIds: [],
+  totalLeafCount: 0,
+  processedLeafCount: 0,
 };
 
-const state = window[RR_STATE_KEY] || defaultState;
-window[RR_STATE_KEY] = state;
-
-// Migrate state shape from an older version of this script that may still be
-// live in `window` from before a code edit — Dataview reruns the block in
-// place, it doesn't reset globals.
-if (state.noteQuery === undefined) state.noteQuery = state.query || "";
-if (state.runTasks === undefined) state.runTasks = [];
-if (state.screen === "pick" || state.screen === "review") state.screen = "setup";
-if (Array.isArray(state.tasks)) {
-  state.tasks = state.tasks.map((t) => (t.selected === undefined ? { ...t, selected: true } : t));
+const priorState = window[RR_STATE_KEY];
+if (priorState && priorState.version !== STATE_VERSION && priorState.intervalId) {
+  clearInterval(priorState.intervalId);
 }
+const state = priorState?.version === STATE_VERSION ? priorState : { ...defaultState };
+window[RR_STATE_KEY] = state;
 
 let refs = {};
 
@@ -189,23 +195,41 @@ async function loadFileData(file) {
   const content = await app.vault.read(file);
   const lines = content.split("\n");
   const headings = [];
-  const tasks = [];
+  const allNodes = [];
+  const stack = [];
+  let nextId = 0;
   lines.forEach((line, i) => {
     const hm = line.match(HEADING_RE);
     if (hm) headings.push({ line: i, level: hm[1].length, text: hm[2] });
     const tm = line.match(TASK_LINE_RE);
-    if (tm && tm[2] === " ") {
+    if (tm) {
       const desc = tm[4];
-      tasks.push({
+      const display = desc.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "").replace(/\s{2,}/g, " ").trim();
+      const prefix = tm[1].slice(0, tm[1].search(/[-*+]/));
+      let indent = 0;
+      for (const ch of prefix) indent += ch === "\t" ? 4 : 1;
+      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+      const parent = stack.length ? stack[stack.length - 1] : null;
+      const node = {
+        id: `task-${nextId++}`,
         line: i,
         sourceLine: line,
-        display: desc.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "").replace(/\s{2,}/g, " ").trim(),
+        indent,
+        parentId: parent?.id ?? null,
+        children: [],
+        checked: tm[2] !== " ",
+        selected: true,
+        display,
+        displayPath: [...(parent?.displayPath ?? []), display],
         estimateMs: parseEstimateMs(desc),
         goalCount: parseGoalCount(desc),
-      });
+      };
+      if (parent) parent.children.push(node);
+      allNodes.push(node);
+      stack.push(node);
     }
   });
-  return { totalLines: lines.length, headings, tasks };
+  return { totalLines: lines.length, headings, tasks: allNodes };
 }
 
 // A section runs from just after its heading to the next heading of the
@@ -229,14 +253,30 @@ function currentSectionLabel() {
 }
 
 function recomputeTasksForSection() {
-  if (state.sectionIdx === "") {
-    state.tasks = state.allTasks.map((t) => ({ ...t, selected: true }));
-  } else {
-    const range = sectionLineRange(state.headings, state.totalLines, parseInt(state.sectionIdx, 10));
-    state.tasks = state.allTasks
-      .filter((t) => t.line >= range.start && t.line < range.end)
-      .map((t) => ({ ...t, selected: true }));
+  const range = state.sectionIdx === ""
+    ? { start: 0, end: state.totalLines }
+    : sectionLineRange(state.headings, state.totalLines, parseInt(state.sectionIdx, 10));
+  const included = new Map();
+  const sourceById = new Map(state.allTasks.map((node) => [node.id, node]));
+  for (const source of state.allTasks) {
+    if (source.line < range.start || source.line >= range.end) continue;
+    let blocked = source.checked;
+    for (let parentId = source.parentId; parentId && !blocked;) {
+      const parent = sourceById.get(parentId);
+      blocked = parent.checked;
+      parentId = parent.parentId;
+    }
+    if (blocked) continue;
+    included.set(source.id, { ...source, children: [], parentId: null, selected: true });
   }
+  for (const node of included.values()) {
+    const source = sourceById.get(node.id);
+    if (source.parentId && included.has(source.parentId)) {
+      node.parentId = source.parentId;
+      included.get(source.parentId).children.push(node);
+    }
+  }
+  state.tasks = [...included.values()].filter((n) => !n.parentId);
 }
 
 function applySection(idx) {
@@ -306,21 +346,65 @@ function startTimer() {
 
 function tick() {
   const now = Date.now();
-  if (!state.paused) state.elapsedMs += now - state.lastTick;
+  const session = currentSession();
+  if (session && !session.paused) session.elapsedMs += now - state.lastTick;
   state.lastTick = now;
   updateTimerDisplay();
 }
 
+function flatten(nodes) {
+  const result = [];
+  const visit = (node) => { result.push(node); node.children.forEach(visit); };
+  nodes.forEach(visit);
+  return result;
+}
+
+function nodeMap(nodes = state.runTasks) {
+  return new Map(flatten(nodes).map((node) => [node.id, node]));
+}
+
+function effective(node, map) {
+  for (let cur = node; cur; cur = cur.parentId ? map.get(cur.parentId) : null) {
+    if (!cur.selected) return false;
+  }
+  return true;
+}
+
+function enabledLeaves(nodes) {
+  const map = nodeMap(nodes);
+  return flatten(nodes).filter((node) => node.children.length === 0 && effective(node, map));
+}
+
+function currentTask() {
+  return nodeMap().get(state.focusId) || null;
+}
+
+function currentSession() {
+  if (!state.focusId) return null;
+  return state.sessions[state.focusId] || (state.sessions[state.focusId] = { elapsedMs: 0, count: 0, paused: false });
+}
+
+function taskPath(node, map = nodeMap()) {
+  const path = [];
+  for (let cur = node; cur; cur = cur.parentId ? map.get(cur.parentId) : null) path.unshift(cur);
+  return path;
+}
+
+function pathLabel(node, map = nodeMap()) {
+  return taskPath(node, map).map((part) => part.display).join(" → ");
+}
+
 function updateTimerDisplay() {
   if (state.screen !== "run" || !refs.timerEl) return;
-  const task = state.runTasks[state.index];
+  const task = currentTask();
   if (!task) return;
+  const session = currentSession();
   const estimateMs = task.estimateMs;
-  const remainingMs = estimateMs - state.elapsedMs;
+  const remainingMs = estimateMs - session.elapsedMs;
   const overdue = remainingMs < 0;
   refs.timerEl.textContent = formatDuration(remainingMs);
   refs.timerEl.toggleClass("rr-overdue", overdue);
-  const pct = Math.min(100, (state.elapsedMs / estimateMs) * 100);
+  const pct = Math.min(100, (session.elapsedMs / estimateMs) * 100);
   refs.barFillEl.style.width = pct + "%";
   refs.barFillEl.toggleClass("rr-overdue", overdue);
 }
@@ -469,11 +553,14 @@ function renderSectionCombo() {
 
 function renderTaskList() {
   const list = container.createDiv({ cls: "rr-review-list" });
-  state.tasks.forEach((t, idx) => {
+  function renderNode(t, siblings, idx, depth, ancestorsEnabled) {
     const row = list.createDiv({ cls: "rr-review-item" });
-    if (!t.selected) row.addClass("rr-review-item-disabled");
+    const isEffective = ancestorsEnabled && t.selected;
+    if (!isEffective) row.addClass("rr-review-item-disabled");
 
-    row.createSpan({ cls: "rr-review-text", text: t.display });
+    const text = row.createSpan({ cls: "rr-review-text" });
+    text.style.paddingLeft = `${depth * 1.25}em`;
+    text.createSpan({ cls: "rr-review-label", text: t.display });
 
     const badges = row.createDiv({ cls: "rr-badge-group" });
     if (t.goalCount != null) {
@@ -484,6 +571,7 @@ function renderTaskList() {
     const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
     const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
     checkbox.checked = t.selected;
+    checkbox.disabled = !ancestorsEnabled;
     checkbox.addEventListener("change", () => {
       t.selected = checkbox.checked;
       render();
@@ -491,18 +579,20 @@ function renderTaskList() {
 
     const reorder = row.createDiv({ cls: "rr-reorder" });
     const upBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" });
-    upBtn.disabled = idx === 0;
+    upBtn.disabled = !ancestorsEnabled || idx === 0;
     upBtn.addEventListener("click", () => {
-      [state.tasks[idx - 1], state.tasks[idx]] = [state.tasks[idx], state.tasks[idx - 1]];
+      [siblings[idx - 1], siblings[idx]] = [siblings[idx], siblings[idx - 1]];
       render();
     });
     const downBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" });
-    downBtn.disabled = idx === state.tasks.length - 1;
+    downBtn.disabled = !ancestorsEnabled || idx === siblings.length - 1;
     downBtn.addEventListener("click", () => {
-      [state.tasks[idx], state.tasks[idx + 1]] = [state.tasks[idx + 1], state.tasks[idx]];
+      [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
       render();
     });
-  });
+    t.children.forEach((child, childIdx) => renderNode(child, t.children, childIdx, depth + 1, isEffective));
+  }
+  state.tasks.forEach((t, idx) => renderNode(t, state.tasks, idx, 0, true));
 }
 
 function renderSetup() {
@@ -537,18 +627,22 @@ function renderSetup() {
 
   renderTaskList();
 
-  const selectedCount = state.tasks.filter((t) => t.selected).length;
+  const selectedCount = enabledLeaves(state.tasks).length;
   const startBtn = container.createEl("button", {
     cls: "rr-btn rr-btn-primary",
-    text: selectedCount > 0 ? `Start routine (${selectedCount} task${selectedCount === 1 ? "" : "s"})` : "Select at least one task",
+    text: selectedCount > 0 ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})` : "Select at least one leaf task",
   });
   startBtn.disabled = selectedCount === 0;
   startBtn.addEventListener("click", () => {
-    state.runTasks = state.tasks.filter((t) => t.selected);
+    state.runTasks = state.tasks;
+    const leaves = enabledLeaves(state.runTasks);
     state.index = 0;
-    state.elapsedMs = 0;
-    state.count = 0;
-    state.paused = false;
+    state.activeLeafId = leaves[0].id;
+    state.focusId = leaves[0].id;
+    state.sessions = {};
+    state.retiredIds = [];
+    state.totalLeafCount = leaves.length;
+    state.processedLeafCount = 0;
     state.completedCount = 0;
     state.screen = "run";
     render();
@@ -586,56 +680,73 @@ async function stopRoutine() {
 }
 
 function renderRun() {
-  const task = state.runTasks[state.index];
+  const map = nodeMap();
+  const task = currentTask();
+  const session = currentSession();
+  const leaves = enabledLeaves(state.runTasks);
+  const activeIndex = leaves.findIndex((leaf) => leaf.id === state.activeLeafId);
 
   const header = container.createDiv({ cls: "rr-header" });
   const runLabel = currentSectionLabel();
   header.createDiv({
     cls: "rr-progress-label",
-    text: `Task ${state.index + 1} of ${state.runTasks.length} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
+    text: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
   });
   const stopBtn = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
   stopBtn.addEventListener("click", () => stopRoutine());
 
   const card = container.createDiv({ cls: "rr-card" });
-  card.createDiv({ cls: "rr-task-text", text: task.display });
+  const crumbs = card.createDiv({ cls: "rr-task-text" });
+  const path = taskPath(map.get(state.activeLeafId), map);
+  path.forEach((part, idx) => {
+    if (idx) crumbs.createSpan({ cls: "rr-crumb-sep", text: "→" });
+    const crumb = crumbs.createSpan({
+      cls: part.id === task.id ? "rr-crumb rr-crumb-current" : "rr-crumb",
+      text: part.display,
+    });
+    if (part.id !== task.id) crumb.addEventListener("click", () => focusTask(part.id));
+  });
+  if (task.id !== state.activeLeafId) {
+    const returnBtn = card.createEl("button", { cls: "rr-btn rr-return", text: "Return to leaf" });
+    returnBtn.addEventListener("click", () => focusTask(state.activeLeafId));
+  }
   card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
 
   if (task.goalCount != null) {
     const countRow = card.createDiv({ cls: "rr-count-row" });
     const minusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "−" });
-    let valueEl = countRow.createSpan({ cls: "rr-count-value", text: String(state.count) });
+    let valueEl = countRow.createSpan({ cls: "rr-count-value", text: String(session.count) });
     countRow.createSpan({ cls: "rr-count-sep", text: "/" });
     countRow.createSpan({ cls: "rr-count-goal", text: String(task.goalCount) });
     const plusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "+" });
 
     function setCount(n) {
-      state.count = Math.max(0, n);
-      valueEl.textContent = String(state.count);
+      session.count = Math.max(0, n);
+      valueEl.textContent = String(session.count);
     }
 
     function startEdit() {
       const input = document.createElement("input");
       input.type = "number";
       input.className = "rr-count-input";
-      input.value = String(state.count);
+      input.value = String(session.count);
       valueEl.replaceWith(input);
       input.focus();
       input.select();
       const commit = () => {
         const n = parseInt(input.value, 10);
-        setCount(isNaN(n) ? state.count : n);
+        setCount(isNaN(n) ? session.count : n);
         input.replaceWith(valueEl);
       };
       input.addEventListener("blur", commit);
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") input.blur();
-        if (e.key === "Escape") { input.value = String(state.count); input.blur(); }
+        if (e.key === "Escape") { input.value = String(session.count); input.blur(); }
       });
     }
 
-    minusBtn.addEventListener("click", () => setCount(state.count - 1));
-    plusBtn.addEventListener("click", () => setCount(state.count + 1));
+    minusBtn.addEventListener("click", () => setCount(session.count - 1));
+    plusBtn.addEventListener("click", () => setCount(session.count + 1));
     valueEl.addEventListener("click", startEdit);
   }
 
@@ -646,21 +757,23 @@ function renderRun() {
   refs.barFillEl = bar.createDiv({ cls: "rr-bar-fill" });
 
   const btnRow = card.createDiv({ cls: "rr-btn-row" });
-  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: state.paused ? "Resume" : "Pause" });
+  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: session.paused ? "Resume" : "Pause" });
   pauseBtn.addEventListener("click", () => {
-    state.paused = !state.paused;
+    session.paused = !session.paused;
     state.lastTick = Date.now();
-    pauseBtn.textContent = state.paused ? "Resume" : "Pause";
+    pauseBtn.textContent = session.paused ? "Resume" : "Pause";
   });
   const skipBtn = btnRow.createEl("button", { cls: "rr-btn", text: "Skip" });
   skipBtn.addEventListener("click", () => advance(false));
   const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
   doneBtn.addEventListener("click", () => completeCurrentTask());
 
-  const next = state.runTasks[state.index + 1];
+  const retired = new Set(state.retiredIds);
+  flatten([task]).forEach((node) => retired.add(node.id));
+  const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
   container.createDiv({
     cls: "rr-next",
-    text: next ? `Next: ${next.display} (${formatDuration(next.estimateMs)})` : "This is the last task.",
+    text: next ? `Next: ${pathLabel(next, map)} (${formatDuration(next.estimateMs)})` : "This is the last remaining leaf task.",
   });
 
   updateTimerDisplay();
@@ -669,7 +782,7 @@ function renderRun() {
 function renderDone() {
   stopTimer();
   container.createDiv({ cls: "rr-header" }).createEl("h3", { text: "Routine complete 🎉" });
-  container.createDiv({ text: `${state.completedCount} of ${state.runTasks.length} tasks marked done.` });
+  container.createDiv({ text: `${state.processedLeafCount} of ${state.totalLeafCount} leaf tasks processed; ${state.completedCount} Done action${state.completedCount === 1 ? "" : "s"}.` });
   const again = container.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Run another note" });
   again.addEventListener("click", () => {
     state.file = null;
@@ -685,13 +798,32 @@ function renderDone() {
   });
 }
 
+function focusTask(id) {
+  state.focusId = id;
+  state.lastTick = Date.now();
+  render();
+}
+
 function advance(wasDone) {
   if (wasDone) state.completedCount++;
-  state.index++;
-  state.elapsedMs = 0;
-  state.count = 0;
-  state.paused = false;
-  state.screen = state.index >= state.runTasks.length ? "done" : "run";
+  const focused = currentTask();
+  const retired = new Set(state.retiredIds);
+  const branchIds = new Set(flatten([focused]).map((node) => node.id));
+  branchIds.forEach((id) => retired.add(id));
+  const leaves = enabledLeaves(state.runTasks);
+  const affectedLeaves = leaves.filter((leaf) => branchIds.has(leaf.id) && !state.retiredIds.includes(leaf.id));
+  state.processedLeafCount += affectedLeaves.length;
+  state.retiredIds = [...retired];
+  const activeIndex = leaves.findIndex((leaf) => leaf.id === state.activeLeafId);
+  const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
+  if (next) {
+    state.index++;
+    state.activeLeafId = next.id;
+    state.focusId = next.id;
+    state.screen = "run";
+  } else {
+    state.screen = "done";
+  }
   render();
 }
 
@@ -704,7 +836,8 @@ async function completeCurrentTask() {
     return;
   }
 
-  const task = state.runTasks[state.index];
+  const task = currentTask();
+  const session = currentSession();
   const content = await app.vault.read(state.file);
   const lines = content.split("\n");
   let rawLine = lines[task.line];
@@ -738,8 +871,8 @@ async function completeCurrentTask() {
     replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}x${p3}${p4}`);
   }
 
-  const elapsedLabel = formatDuration(state.elapsedMs);
-  const resultText = task.goalCount != null ? `🏁 ${elapsedLabel} 🥅 ${state.count}` : `🏁 ${elapsedLabel}`;
+  const elapsedLabel = formatDuration(session.elapsedMs);
+  const resultText = task.goalCount != null ? `🏁 ${elapsedLabel} 🥅 ${session.count}` : `🏁 ${elapsedLabel}`;
   const replacementLines = replacement.split("\n").map((line) => {
     const lm = line.match(TASK_LINE_RE);
     if (lm && lm[2] !== " ") {
@@ -752,7 +885,7 @@ async function completeCurrentTask() {
 
   const shift = replacementLines.length - 1;
   if (shift !== 0) {
-    state.runTasks.forEach((t) => { if (t.line > task.line) t.line += shift; });
+    flatten(state.runTasks).forEach((t) => { if (t.line > task.line) t.line += shift; });
   }
 
   advance(true);
