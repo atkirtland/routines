@@ -26,7 +26,7 @@ modified: 2026-09-26T00:00:00Z
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
 <li>Timer keeps counting past the estimate into negative time, shown in red.</li>
 <li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
-<li>Progress is stored in <code>routine-runner-state.md</code> beside this note. A running routine, its timers, and counts survive Dataview refreshes and Obsidian restarts; the cache is ordinary editable YAML.</li>
+<li>Progress is stored in <code>routine-runner-state.yaml</code> beside this note. A running routine, its timers, and counts survive Dataview refreshes and Obsidian restarts; the cache is ordinary editable YAML. Delete or blank it to reset the cache.</li>
 </ul>
 </details>
 
@@ -110,6 +110,7 @@ style.textContent = `
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
     .rr-error { color:var(--color-red, #e5534b); padding:8px 10px; margin-bottom:0.75em; border:1px solid var(--color-red, #e5534b); border-radius:6px; }
+    .rr-diagnostic { color:var(--text-muted); padding:6px 10px; margin-bottom:0.75em; border-left:3px solid var(--text-faint); font-size:0.85em; }
     .rr-setup-tools { position:sticky; top:0; z-index:2; padding:0.55em; margin-bottom:0.6em; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
     .rr-tools-row { display:flex; align-items:center; flex-wrap:wrap; gap:0.4em; }
     .rr-tools-row + .rr-tools-row { margin-top:0.45em; }
@@ -182,7 +183,9 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const RR_STATE_KEY = "__routineRunnerState";
 const STATE_VERSION = 5;
 const CACHE_VERSION = 1;
-const CACHE_NAME = "routine-runner-state.md";
+// Keep live state out of Markdown: Dataview reindexes every changed Markdown
+// file, so saving a .md cache causes a delayed full rerender after each action.
+const CACHE_NAME = "routine-runner-state.yaml";
 const runnerPath = dv.current().file.path;
 const runnerDir = runnerPath.includes("/") ? runnerPath.slice(0, runnerPath.lastIndexOf("/")) : "";
 const CACHE_PATH = runnerDir ? `${runnerDir}/${CACHE_NAME}` : CACHE_NAME;
@@ -228,9 +231,37 @@ window[RR_STATE_KEY] = state;
 
 let refs = {};
 let statusMenuEl = null;
-const SAVE_TAIL_KEY = "__routineRunnerSaveTail";
-let saveTail = window[SAVE_TAIL_KEY] ?? Promise.resolve();
-let countSaveTimer = null;
+const COORDINATOR_KEY = "__routineRunnerCoordinator";
+const coordinator = window[COORDINATOR_KEY] ?? {
+  actionTail: Promise.resolve(),
+  saveTail: Promise.resolve(),
+  countSaveTimer: null,
+  countSaveGeneration: 0,
+  latestWrittenCacheText: null,
+  generation: 0,
+  initialized: false,
+  diagnostics: [],
+};
+window[COORDINATOR_KEY] = coordinator;
+const viewGeneration = ++coordinator.generation;
+
+function isCurrentView() { return coordinator.generation === viewGeneration; }
+
+function enqueueAction(action) {
+  const run = coordinator.actionTail.catch(() => {}).then(action);
+  coordinator.actionTail = run.catch((error) => {
+    const saveFailure = state.cacheError?.startsWith(`Could not save ${CACHE_NAME}:`);
+    if (!saveFailure) state.cacheError = `Routine action failed: ${error.message}`;
+    if (isCurrentView()) render();
+    if (!saveFailure) new Notice(state.cacheError, 8000);
+  });
+  return run;
+}
+
+function reportDiagnostics(messages) {
+  const unique = [...new Set(messages.filter(Boolean))];
+  coordinator.diagnostics = unique;
+}
 
 function yamlTools() {
   try { return window.require?.("obsidian") ?? {}; } catch (e) { return {}; }
@@ -238,18 +269,19 @@ function yamlTools() {
 
 function cacheFrontmatter(text, cacheFile) {
   const match = text.match(/^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)/m);
-  if (!match) throw new Error("expected YAML frontmatter delimited by ---");
+  const yamlText = match ? match[1] : text.trim();
+  if (!yamlText) throw new Error("expected YAML state");
   const { parseYaml } = yamlTools();
   let parsed;
   if (typeof parseYaml === "function") {
-    parsed = parseYaml(match[1]);
+    parsed = parseYaml(yamlText);
   } else {
     // `window.require("obsidian")` is unavailable in some Obsidian contexts
     // (notably mobile/restricted WebViews). JSON is valid YAML, so files we
     // write can be parsed directly; ordinary hand-edited YAML comes from
     // Obsidian's own metadata cache.
-    try { parsed = JSON.parse(match[1]); } catch (e) {
-      parsed = app.metadataCache.getFileCache(cacheFile)?.frontmatter;
+    try { parsed = JSON.parse(yamlText); } catch (e) {
+      parsed = match ? app.metadataCache.getFileCache(cacheFile)?.frontmatter : null;
     }
     if (!parsed) throw new Error("Obsidian has not parsed the YAML frontmatter yet");
   }
@@ -303,23 +335,23 @@ function sessionRecord(task, session, map = nodeMap()) {
   };
 }
 
-function syncCurrentSessionsToLedger() {
-  if (!state.file || !state.runTasks.length) return;
+function mergedSessionLedger() {
+  if (!state.file || !state.runTasks.length) return [...state.sessionLedger];
   const map = nodeMap();
   const ids = new Set(Object.keys(state.sessions));
-  state.sessionLedger = state.sessionLedger.filter((entry) => {
+  const ledger = state.sessionLedger.filter((entry) => {
     if (entry["source-file"] !== state.file.path) return true;
     const match = matchTaskRecord(entry, flatten(state.runTasks), map, false);
     return !match || !ids.has(match.id);
   });
   for (const [id, session] of Object.entries(state.sessions)) {
     const task = map.get(id);
-    if (task) state.sessionLedger.push(sessionRecord(task, session, map));
+    if (task) ledger.push(sessionRecord(task, session, map));
   }
+  return ledger;
 }
 
 function cacheObject() {
-  syncCurrentSessionsToLedger();
   let routine = null;
   if (state.screen === "run" && state.file) {
     const map = nodeMap();
@@ -338,7 +370,7 @@ function cacheObject() {
       tasks: flatten(state.runTasks).map((task) => taskRecord(task, map)),
     };
   }
-  return { "routine-runner-state-version": CACHE_VERSION, routine, sessions: state.sessionLedger };
+  return { "routine-runner-state-version": CACHE_VERSION, routine, sessions: mergedSessionLedger() };
 }
 
 function serializeCache(value) {
@@ -348,37 +380,47 @@ function serializeCache(value) {
   const yaml = typeof stringifyYaml === "function"
     ? stringifyYaml(value).trimEnd()
     : JSON.stringify(value, null, 2);
-  return `---\n${yaml}\n---\n\n# Routine Runner State\n\nThis file is managed by [[routine-runner]]. You may edit the YAML while the runner is stopped, then rerun its Dataview block.\n`;
+  return `${yaml}\n`;
 }
 
 function queueSave() {
   if (!state.cacheWritable) return Promise.resolve();
   const snapshot = serializeCache(cacheObject());
-  saveTail = saveTail.catch(() => {}).then(async () => {
+  const save = coordinator.saveTail.catch(() => {}).then(async () => {
     const existing = app.vault.getAbstractFileByPath(CACHE_PATH);
-    if (existing) await app.vault.modify(existing, snapshot);
-    else await app.vault.create(CACHE_PATH, snapshot);
+    if (existing) {
+      const current = await app.vault.read(existing);
+      if (current !== snapshot) await app.vault.modify(existing, snapshot);
+    } else await app.vault.create(CACHE_PATH, snapshot);
+    coordinator.latestWrittenCacheText = snapshot;
+    coordinator.initialized = true;
+    state.cacheError = null;
   }).catch((error) => {
     state.cacheError = `Could not save ${CACHE_NAME}: ${error.message}`;
     new Notice(state.cacheError, 8000);
     throw error;
   });
-  window[SAVE_TAIL_KEY] = saveTail;
-  return saveTail;
+  coordinator.saveTail = save;
+  return save;
 }
 
 function scheduleCountSave() {
-  if (countSaveTimer) clearTimeout(countSaveTimer);
-  countSaveTimer = setTimeout(() => { countSaveTimer = null; queueSave(); }, 300);
+  if (coordinator.countSaveTimer) clearTimeout(coordinator.countSaveTimer);
+  coordinator.countSaveGeneration = viewGeneration;
+  coordinator.countSaveTimer = setTimeout(() => {
+    coordinator.countSaveTimer = null;
+    // State is shared, so a replacement view may safely inherit this debounce.
+    enqueueAction(queueSave);
+  }, 300);
 }
 
 async function flushCountSave() {
-  if (countSaveTimer) {
-    clearTimeout(countSaveTimer);
-    countSaveTimer = null;
+  if (coordinator.countSaveTimer) {
+    clearTimeout(coordinator.countSaveTimer);
+    coordinator.countSaveTimer = null;
     await queueSave();
   } else {
-    await saveTail.catch(() => {});
+    await coordinator.saveTail.catch(() => {});
   }
 }
 
@@ -684,9 +726,6 @@ function hydrateSessions() {
   const tasks = flatten(state.runTasks);
   const map = nodeMap();
   const warnings = [];
-  const runningEntries = state.sessionLedger.filter((entry) =>
-    entry?.["source-file"] === state.file.path && entry["started-at"] != null
-  );
   for (const entry of state.sessionLedger) {
     if (entry?.["source-file"] !== state.file.path) continue;
     const match = matchTaskRecord(entry, tasks, map);
@@ -703,21 +742,15 @@ function hydrateSessions() {
   for (const [id, session] of Object.entries(state.sessions)) {
     if (id !== state.focusId && session.startedAt !== null) session.startedAt = null;
   }
-  // Only the focused task is allowed to have a live clock. If source edits made
-  // that one session impossible to match, carry its timing onto the restored
-  // focus instead of silently presenting a paused timer.
-  const focusedSession = state.sessions[state.focusId];
-  if ((!focusedSession || focusedSession.startedAt === null) && runningEntries.length === 1) {
-    const entry = runningEntries[0];
-    state.sessions[state.focusId] = {
-      elapsedBeforeStartMs: Math.max(0, Number(entry["elapsed-before-start"]) || 0),
-      startedAt: parseStartedAt(entry["started-at"]),
-      count: Math.max(0, Number(entry.count) || 0),
-    };
-    state.sessionLedger = state.sessionLedger.filter((candidate) => candidate !== entry);
-    warnings.push("Recovered the running timer onto the current task after source edits");
-  }
-  if (warnings.length) new Notice(warnings.join("\n"), 9000);
+  // Unmatched and ambiguous records stay in the ledger. Guessing would risk
+  // attaching elapsed time to an unrelated task after source edits.
+  reportDiagnostics(warnings);
+}
+
+function ledgerEntryMatchesRecord(entry, record) {
+  return entry?.["source-file"] === state.file?.path
+    && (entry["source-line"] === record?.["source-line"]
+      || arraysEqual(entry["ancestry-path"], record?.["task-path"]));
 }
 
 async function restoreRoutine(saved) {
@@ -740,18 +773,36 @@ async function restoreRoutine(saved) {
   const used = new Set();
   const restored = [];
   const warnings = [];
+  let pruned = false;
   for (const record of saved.tasks ?? []) {
     const match = matchTaskRecord(record, available.filter((t) => !used.has(t.id)), availableMap);
     const label = (record?.["task-path"] ?? []).join(" → ") || record?.["source-line"] || "unknown task";
-    if (!match) { warnings.push(`Removed stale routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
-    if (match.ambiguous) { warnings.push(`Removed ambiguous routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
+    if (!match) {
+      pruned = true;
+      if (record?.retired) {
+        state.sessionLedger = state.sessionLedger.filter((entry) => !ledgerEntryMatchesRecord(entry, record));
+      } else {
+        warnings.push(`Missing cached task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`);
+      }
+      continue;
+    }
+    if (match.ambiguous) { pruned = true; warnings.push(`Removed ambiguous routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
     used.add(match.id);
     restored.push({ ...match, id: record.id, parentId: record.parent ?? null, children: [] });
   }
   const restoredMap = new Map(restored.map((task) => [task.id, task]));
   for (const task of restored) if (task.parentId && restoredMap.has(task.parentId)) restoredMap.get(task.parentId).children.push(task);
   state.runTasks = restored.filter((task) => !task.parentId || !restoredMap.has(task.parentId));
-  if (!state.runTasks.length) throw new Error("no cached routine tasks could be matched");
+  if (!state.runTasks.length) {
+    state.retiredIds = [];
+    state.sessions = {};
+    state.completedCount = Math.max(0, Number(saved.progress?.["completed-count"]) || 0);
+    state.totalLeafCount = Math.max(0, Number(saved.progress?.["total-leaf-count"]) || 0);
+    state.processedLeafCount = Math.max(0, Number(saved.progress?.["processed-leaf-count"]) || 0);
+    state.screen = "done";
+    reportDiagnostics(warnings);
+    return true;
+  }
   state.retiredIds = (saved.tasks ?? []).filter((task) => task.retired).map((task) => task.id).filter((id) => restoredMap.has(id));
   state.leaveUnchecked = Boolean(saved.options?.["leave-unchecked"]);
   state.completedCount = Math.max(0, Number(saved.progress?.["completed-count"]) || 0);
@@ -762,12 +813,15 @@ async function restoreRoutine(saved) {
   if (!state.activeLeafId || !state.focusId) throw new Error("cached routine has no remaining active task");
   state.screen = "run";
   hydrateSessions();
-  if (warnings.length) new Notice(warnings.join("\n"), 9000);
-  return warnings.length > 0;
+  reportDiagnostics([...coordinator.diagnostics, ...warnings]);
+  return pruned;
 }
 
 function updateTimerDisplay() {
-  if (state.screen !== "run" || !refs.timerEl) return;
+  // An action owned by a superseded Dataview execution may still be finishing
+  // after a source-note edit triggered the replacement view. It may update the
+  // shared state, but must never repaint its detached/retiring DOM.
+  if (!isCurrentView() || state.screen !== "run" || !refs.timerEl) return;
   const task = currentTask();
   if (!task) return;
   const session = currentSession();
@@ -783,11 +837,20 @@ function updateTimerDisplay() {
 }
 
 function render() {
+  // Done edits the source note before it advances and saves. That edit can
+  // trigger a Dataview rerun while the old action is still on the action queue.
+  // Prevent the retiring execution from clearing/rebuilding UI after the new
+  // generation has taken ownership of the view.
+  if (!isCurrentView()) return;
   statusMenuEl?.remove();
   statusMenuEl = null;
   container.empty();
   refs = {};
   if (state.cacheError) container.createDiv({ cls: "rr-error", text: state.cacheError });
+  if (coordinator.diagnostics.length) container.createDiv({
+    cls: "rr-diagnostic",
+    text: `Cache note: ${coordinator.diagnostics.join(" · ")}`,
+  });
   if (state.screen === "run") renderRun();
   else if (state.screen === "done") renderDone();
   else renderSetup();
@@ -1188,7 +1251,7 @@ function renderSetup() {
       : "Select at least one leaf task",
   });
   startBtn.disabled = selectedCount === 0;
-  startBtn.addEventListener("click", async () => {
+  startBtn.addEventListener("click", () => enqueueAction(async () => {
     // Persist only enabled leaves and the ancestors needed to retain their paths.
     state.runTasks = selectedRoutineTree(state.tasks);
     const leaves = enabledLeaves(state.runTasks);
@@ -1205,7 +1268,7 @@ function renderSetup() {
     startTimer();
     render();
     await queueSave();
-  });
+  }));
 }
 
 async function selectFile(file) {
@@ -1259,7 +1322,7 @@ function renderRun() {
     text: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
   });
   const stopBtn = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
-  stopBtn.addEventListener("click", () => stopRoutine());
+  stopBtn.addEventListener("click", () => enqueueAction(stopRoutine));
 
   const card = container.createDiv({ cls: "rr-card" });
   const crumbs = card.createDiv({ cls: "rr-task-text" });
@@ -1270,7 +1333,7 @@ function renderRun() {
       cls: part.id === task.id ? "rr-crumb rr-crumb-current" : "rr-crumb",
       text: part.display,
     });
-    if (part.id !== task.id) crumb.addEventListener("click", () => focusTask(part.id));
+    if (part.id !== task.id) crumb.addEventListener("click", () => enqueueAction(() => focusTask(part.id)));
   });
   card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
 
@@ -1298,7 +1361,7 @@ function renderRun() {
       input.select();
       const commit = () => {
         const n = parseInt(input.value, 10);
-        setCount(isNaN(n) ? session.count : n);
+        enqueueAction(() => setCount(isNaN(n) ? session.count : n));
         input.replaceWith(valueEl);
       };
       input.addEventListener("blur", commit);
@@ -1308,8 +1371,8 @@ function renderRun() {
       });
     }
 
-    minusBtn.addEventListener("click", () => setCount(session.count - 1));
-    plusBtn.addEventListener("click", () => setCount(session.count + 1));
+    minusBtn.addEventListener("click", () => enqueueAction(() => setCount(session.count - 1)));
+    plusBtn.addEventListener("click", () => enqueueAction(() => setCount(session.count + 1)));
     valueEl.addEventListener("click", startEdit);
   }
 
@@ -1321,7 +1384,7 @@ function renderRun() {
 
   const btnRow = card.createDiv({ cls: "rr-btn-row" });
   const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: session.startedAt === null ? "Resume" : "Pause" });
-  pauseBtn.addEventListener("click", async () => {
+  pauseBtn.addEventListener("click", () => enqueueAction(async () => {
     const now = Date.now();
     if (session.startedAt === null) {
       session.startedAt = now;
@@ -1331,11 +1394,11 @@ function renderRun() {
     pauseBtn.textContent = session.startedAt === null ? "Resume" : "Pause";
     updateTimerDisplay();
     await queueSave();
-  });
+  }));
   const skipBtn = btnRow.createEl("button", { cls: "rr-btn", text: "Skip" });
-  skipBtn.addEventListener("click", () => advance(false));
+  skipBtn.addEventListener("click", () => enqueueAction(() => advance(false)));
   const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
-  doneBtn.addEventListener("click", () => completeCurrentTask());
+  doneBtn.addEventListener("click", () => enqueueAction(() => completeCurrentTask()));
   doneBtn.setAttribute("title", "Right-click to choose a Tasks status");
   doneBtn.addEventListener("contextmenu", async (e) => {
     e.preventDefault();
@@ -1427,7 +1490,7 @@ async function showStatusMenu(anchor) {
     option.addEventListener("click", () => {
       menu.remove();
       statusMenuEl = null;
-      completeCurrentTask(status.symbol === "x" ? null : status);
+      enqueueAction(() => completeCurrentTask(status.symbol === "x" ? null : status));
     });
   });
   const rect = anchor.getBoundingClientRect();
@@ -1567,30 +1630,90 @@ async function completeCurrentTask(selectedStatus = null) {
   await advance(true);
 }
 
+async function resetMissingCache() {
+  state.sessionLedger = [];
+  state.sessions = {};
+  state.runTasks = [];
+  state.retiredIds = [];
+  state.activeLeafId = null;
+  state.focusId = null;
+  state.index = 0;
+  state.completedCount = 0;
+  state.totalLeafCount = 0;
+  state.processedLeafCount = 0;
+  state.cacheError = null;
+  state.cacheWritable = true;
+  state.screen = "setup";
+  coordinator.diagnostics = [];
+  coordinator.latestWrittenCacheText = null;
+  coordinator.initialized = false;
+  render();
+  await queueSave();
+}
+
 async function initializeFromCache() {
+  // A source-note-triggered Dataview rerun can arrive while the previous view is
+  // between editing the source note and committing its new cache snapshot.
+  // Never inspect disk until that complete transaction and its writes settle.
+  if (coordinator.countSaveTimer) {
+    clearTimeout(coordinator.countSaveTimer);
+    coordinator.countSaveTimer = null;
+    enqueueAction(queueSave);
+  }
+  // Recheck the tail identities: an action completing while we await it may
+  // have appended a save, and a transferred debounce may append an action.
+  while (true) {
+    const actionTail = coordinator.actionTail;
+    await actionTail.catch(() => {});
+    const saveTail = coordinator.saveTail;
+    await saveTail.catch(() => {});
+    if (actionTail === coordinator.actionTail && saveTail === coordinator.saveTail) break;
+  }
+  if (!isCurrentView()) return;
+
   const cacheFile = app.vault.getAbstractFileByPath(CACHE_PATH);
   if (!cacheFile) {
-    state.sessionLedger = [];
-    state.cacheError = null;
-    state.cacheWritable = true;
-    state.screen = "setup";
-    render();
-    await queueSave();
+    await resetMissingCache();
     return;
   }
   try {
-    const cached = cacheFrontmatter(await app.vault.read(cacheFile), cacheFile);
+    const cacheText = await app.vault.read(cacheFile);
+    if (!isCurrentView()) return;
+    if (!cacheText.trim()) {
+      await resetMissingCache();
+      return;
+    }
+
+    // A source-note edit can rerun Dataview after this cache snapshot was
+    // written. The shared state is already newer and fully validated, so
+    // reloading identical bytes could reset a timer or replay navigation.
+    if (coordinator.initialized && cacheText === coordinator.latestWrittenCacheText) {
+      state.cacheError = null;
+      state.cacheWritable = true;
+      render();
+      if (state.screen === "run") {
+        localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
+        state.intervalId = localIntervalId;
+        requestWakeLock();
+      }
+      return;
+    }
+
+    const cached = cacheFrontmatter(cacheText, cacheFile);
     state.cacheError = null;
     state.cacheWritable = true;
+    coordinator.diagnostics = [];
     state.sessionLedger = cached.sessions;
     if (cached.routine) {
       const routinePruned = await restoreRoutine(cached.routine);
       // Preserve the persisted paused/running state. A non-null started-at
       // naturally accounts for time spent closed; intervals only repaint.
       render();
-      localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-      state.intervalId = localIntervalId;
-      requestWakeLock();
+      if (state.screen === "run") {
+        localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
+        state.intervalId = localIntervalId;
+        requestWakeLock();
+      }
       // Persist the successfully restored subset once so stale/ambiguous task
       // records do not warn again on every Dataview rerun.
       if (routinePruned) queueSave();
@@ -1600,6 +1723,9 @@ async function initializeFromCache() {
       state.sessions = {};
       render();
     }
+    coordinator.initialized = true;
+    // A manual/foreign edit must remain distinguishable from our last write.
+    coordinator.latestWrittenCacheText = null;
   } catch (error) {
     state.cacheWritable = false;
     state.cacheError = `${CACHE_NAME} was not loaded: ${error.message}. Fix its YAML and rerun this block; it will not be overwritten.`;
