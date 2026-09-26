@@ -2,7 +2,7 @@
 aliases:
   - Routine Runner
 created: 2026-09-19T15:14:37-04:00
-modified: 2026-09-25T00:00:00-04:00
+modified: 2026-09-26T00:00:00Z
 ---
 
 # Routine Runner
@@ -14,7 +14,7 @@ modified: 2026-09-25T00:00:00-04:00
 <li>Add a time goal to a task with <code>⏱️ mm:ss</code> or <code>⏱️ hh:mm:ss</code>, e.g. <code>- [ ] Stretch ⏱️ 10:00</code>. No marker → defaults to 5:00.</li>
 <li>Give a task a count goal instead with <code>🎯 n</code>, e.g. <code>- [ ] Push-ups 🎯 20</code>. While it's running, tap the − / + buttons or click the number to log how many you actually did; the current count and the goal are shown side by side.</li>
 <li>If a task also has <code>#tags</code> or Tasks plugin metadata (dates, priority, recurrence, …), put the routine runner marker after the tags and before the metadata: <code>- [ ] Push-ups #fitness 🎯 20 📅 2026-09-25</code>.</li>
-<li>Type into the note field to search and pick a note — the field stays a live search box, so you can click back into it anytime afterward to switch to a different note. If the note has headings, a section field appears the same way, letting you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file); leave it on "Whole note" to run everything.</li>
+<li>Type into the note field to search and pick a note — the field stays a live search box, so you can click back into it anytime afterward to switch to a different note. Use <strong>Today</strong> beside it to jump straight to the note located by Obsidian's Daily Notes folder and date-format settings. If the note has headings, a section field appears the same way, letting you scope the routine to just the tasks under one heading (a section runs until the next heading of the same or higher level, or end of file); leave it on "Whole note" to run everything.</li>
 <li>Indented checkbox tasks form a tree. Before starting, uncheck any task you want to leave out; disabling a parent temporarily disables its descendants without forgetting their choices. The ↑ / ↓ buttons reorder siblings only, and moving a parent carries its whole subtree for this run without editing the note.</li>
 <li>For long routines, use the sticky setup toolbar to search tasks and enable, disable, collapse, or expand direct matches; dimmed ancestor rows are context only. With a blank search, Enable/Disable affects the top-level gates (preserving descendant choices), while Expand/Collapse applies to the whole tree. Reset restores the current note and section's original task order, selections, search, and expansion state.</li>
 <li>The setup tree supports Vim-style keys: <code>j</code>/<code>k</code> move, <code>h</code>/<code>l</code> collapse/expand, <code>Space</code> or <code>x</code> toggles, <code>Shift-K</code>/<code>Shift-J</code> reorders among siblings, <code>g g</code>/<code>G</code> jumps to the first/last row, and <code>/</code> focuses search.</li>
@@ -26,12 +26,13 @@ modified: 2026-09-25T00:00:00-04:00
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
 <li>Timer keeps counting past the estimate into negative time, shown in red.</li>
 <li>While a routine is running it requests a screen wake lock (where supported) so the display doesn't auto-lock. This only keeps the screen on — it can't keep the timer running if you switch apps or lock the screen manually, since that needs OS-level background permission a markdown code block doesn't have.</li>
-<li>Progress is kept outside this code block, so Dataview's periodic auto-refresh (it re-runs every <code>dataviewjs</code> block whenever any file in the vault changes) won't bump you back to the picker mid-routine. It stays in place until you finish, click Stop, or restart Obsidian.</li>
+<li>Progress is stored in <code>routine-runner-state.md</code> beside this note. A running routine, its timers, and counts survive Dataview refreshes and Obsidian restarts; the cache is ordinary editable YAML.</li>
 </ul>
 </details>
 
 ```dataviewjs
 const DEFAULT_ESTIMATE_MS = 5 * 60 * 1000;
+const REDRAW_INTERVAL_MS = 1000;
 const TIME_GOAL_RE = /⏱️?\s*(\d+):(\d{2})(?::(\d{2}))?/;
 const COUNT_GOAL_RE = /🎯\s*(\d+)/;
 const TASK_LINE_RE = /^(\s*[-*+]\s\[)([^\]])(\]\s?)(.*)$/;
@@ -94,6 +95,10 @@ style.textContent = `
     .rr-header { display:flex; align-items:center; justify-content:space-between; gap:0.75em; margin-bottom:0.5em; }
     .rr-link { cursor:pointer; font-size:0.85em; color:var(--text-muted); }
     .rr-link:hover { color:var(--text-normal); }
+    .rr-note-row { display:flex; align-items:stretch; gap:0.5em; margin-bottom:0.5em; }
+    .rr-note-row .rr-input { flex:1 1 auto; min-width:0; width:auto; margin:0; }
+    .rr-daily-btn { flex:none; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; white-space:nowrap; }
+    .rr-daily-btn:hover { background:var(--interactive-hover); }
     .rr-input { width:100%; box-sizing:border-box; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); margin-bottom:0.5em; }
     .rr-toggle-row { display:flex; align-items:center; gap:0.5em; margin-bottom:0.75em; color:var(--text-muted); font-size:0.9em; }
     .rr-toggle-row label { cursor:pointer; }
@@ -104,6 +109,7 @@ style.textContent = `
     .rr-section-list { max-height:180px; }
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
+    .rr-error { color:var(--color-red, #e5534b); padding:8px 10px; margin-bottom:0.75em; border:1px solid var(--color-red, #e5534b); border-radius:6px; }
     .rr-setup-tools { position:sticky; top:0; z-index:2; padding:0.55em; margin-bottom:0.6em; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
     .rr-tools-row { display:flex; align-items:center; flex-wrap:wrap; gap:0.4em; }
     .rr-tools-row + .rr-tools-row { margin-top:0.45em; }
@@ -174,7 +180,12 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 // on every run would silently dump the user back to the picker mid-routine, so
 // state lives on `window` and survives across those re-executions.
 const RR_STATE_KEY = "__routineRunnerState";
-const STATE_VERSION = 3;
+const STATE_VERSION = 5;
+const CACHE_VERSION = 1;
+const CACHE_NAME = "routine-runner-state.md";
+const runnerPath = dv.current().file.path;
+const runnerDir = runnerPath.includes("/") ? runnerPath.slice(0, runnerPath.lastIndexOf("/")) : "";
+const CACHE_PATH = runnerDir ? `${runnerDir}/${CACHE_NAME}` : CACHE_NAME;
 
 const defaultState = {
   version: STATE_VERSION,
@@ -184,7 +195,6 @@ const defaultState = {
   tasks: [],
   runTasks: [],
   index: 0,
-  lastTick: 0,
   intervalId: null,
   completedCount: 0,
   leaveUnchecked: false,
@@ -201,6 +211,9 @@ const defaultState = {
   taskQuery: "",
   collapsedIds: [],
   setupCursorId: null,
+  sessionLedger: [],
+  cacheError: null,
+  cacheWritable: true,
 };
 
 const priorState = window[RR_STATE_KEY];
@@ -215,6 +228,159 @@ window[RR_STATE_KEY] = state;
 
 let refs = {};
 let statusMenuEl = null;
+const SAVE_TAIL_KEY = "__routineRunnerSaveTail";
+let saveTail = window[SAVE_TAIL_KEY] ?? Promise.resolve();
+let countSaveTimer = null;
+
+function yamlTools() {
+  try { return window.require?.("obsidian") ?? {}; } catch (e) { return {}; }
+}
+
+function cacheFrontmatter(text, cacheFile) {
+  const match = text.match(/^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)/m);
+  if (!match) throw new Error("expected YAML frontmatter delimited by ---");
+  const { parseYaml } = yamlTools();
+  let parsed;
+  if (typeof parseYaml === "function") {
+    parsed = parseYaml(match[1]);
+  } else {
+    // `window.require("obsidian")` is unavailable in some Obsidian contexts
+    // (notably mobile/restricted WebViews). JSON is valid YAML, so files we
+    // write can be parsed directly; ordinary hand-edited YAML comes from
+    // Obsidian's own metadata cache.
+    try { parsed = JSON.parse(match[1]); } catch (e) {
+      parsed = app.metadataCache.getFileCache(cacheFile)?.frontmatter;
+    }
+    if (!parsed) throw new Error("Obsidian has not parsed the YAML frontmatter yet");
+  }
+  if (!parsed || typeof parsed !== "object") throw new Error("frontmatter must be a mapping");
+  if (parsed["routine-runner-state-version"] !== CACHE_VERSION) {
+    throw new Error(`unsupported state version ${parsed["routine-runner-state-version"] ?? "(missing)"}`);
+  }
+  if (parsed.routine !== null && parsed.routine !== undefined && typeof parsed.routine !== "object") {
+    throw new Error("routine must be a mapping or null");
+  }
+  if (parsed.sessions !== undefined && !Array.isArray(parsed.sessions)) throw new Error("sessions must be a list");
+  for (const session of parsed.sessions ?? []) {
+    if (!session || typeof session !== "object" || typeof session["source-file"] !== "string") throw new Error("each session needs a source-file");
+    parseStartedAt(session["started-at"]);
+  }
+  if (parsed.routine && !Array.isArray(parsed.routine.tasks)) throw new Error("routine.tasks must be a list");
+  return { version: CACHE_VERSION, routine: parsed.routine ?? null, sessions: parsed.sessions ?? [] };
+}
+
+function isoOrNull(ms) {
+  return ms == null ? null : new Date(ms).toISOString();
+}
+
+function parseStartedAt(value) {
+  if (value == null || value === "") return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) throw new Error(`invalid started-at timestamp: ${value}`);
+  return ms;
+}
+
+function taskRecord(task, map = nodeMap()) {
+  return {
+    id: task.id,
+    parent: task.parentId,
+    "task-path": taskPath(task, map).map((part) => part.display),
+    "source-line": task.sourceLine,
+    "line-hint": task.line,
+    retired: state.retiredIds.includes(task.id),
+  };
+}
+
+function sessionRecord(task, session, map = nodeMap()) {
+  return {
+    "source-file": state.file.path,
+    "ancestry-path": taskPath(task, map).map((part) => part.display),
+    "source-line": task.sourceLine,
+    "line-hint": task.line,
+    "elapsed-before-start": Math.max(0, Math.round(session.elapsedBeforeStartMs || 0)),
+    "started-at": isoOrNull(session.startedAt),
+    ...(task.goalCount != null || session.count ? { count: Math.max(0, session.count || 0) } : {}),
+  };
+}
+
+function syncCurrentSessionsToLedger() {
+  if (!state.file || !state.runTasks.length) return;
+  const map = nodeMap();
+  const ids = new Set(Object.keys(state.sessions));
+  state.sessionLedger = state.sessionLedger.filter((entry) => {
+    if (entry["source-file"] !== state.file.path) return true;
+    const match = matchTaskRecord(entry, flatten(state.runTasks), map, false);
+    return !match || !ids.has(match.id);
+  });
+  for (const [id, session] of Object.entries(state.sessions)) {
+    const task = map.get(id);
+    if (task) state.sessionLedger.push(sessionRecord(task, session, map));
+  }
+}
+
+function cacheObject() {
+  syncCurrentSessionsToLedger();
+  let routine = null;
+  if (state.screen === "run" && state.file) {
+    const map = nodeMap();
+    routine = {
+      "source-file": state.file.path,
+      section: state.sectionIdx === "" ? null : currentSectionLabel(),
+      "section-line-hint": state.sectionIdx === "" ? null : state.headings[Number(state.sectionIdx)]?.line,
+      options: { "leave-unchecked": state.leaveUnchecked },
+      progress: {
+        "completed-count": state.completedCount,
+        "total-leaf-count": state.totalLeafCount,
+        "processed-leaf-count": state.processedLeafCount,
+      },
+      "active-leaf": state.activeLeafId,
+      "focused-task": state.focusId,
+      tasks: flatten(state.runTasks).map((task) => taskRecord(task, map)),
+    };
+  }
+  return { "routine-runner-state-version": CACHE_VERSION, routine, sessions: state.sessionLedger };
+}
+
+function serializeCache(value) {
+  const { stringifyYaml } = yamlTools();
+  // Pretty JSON is also valid YAML. This fallback keeps persistence working
+  // where Obsidian's CommonJS exports are intentionally not exposed.
+  const yaml = typeof stringifyYaml === "function"
+    ? stringifyYaml(value).trimEnd()
+    : JSON.stringify(value, null, 2);
+  return `---\n${yaml}\n---\n\n# Routine Runner State\n\nThis file is managed by [[routine-runner]]. You may edit the YAML while the runner is stopped, then rerun its Dataview block.\n`;
+}
+
+function queueSave() {
+  if (!state.cacheWritable) return Promise.resolve();
+  const snapshot = serializeCache(cacheObject());
+  saveTail = saveTail.catch(() => {}).then(async () => {
+    const existing = app.vault.getAbstractFileByPath(CACHE_PATH);
+    if (existing) await app.vault.modify(existing, snapshot);
+    else await app.vault.create(CACHE_PATH, snapshot);
+  }).catch((error) => {
+    state.cacheError = `Could not save ${CACHE_NAME}: ${error.message}`;
+    new Notice(state.cacheError, 8000);
+    throw error;
+  });
+  window[SAVE_TAIL_KEY] = saveTail;
+  return saveTail;
+}
+
+function scheduleCountSave() {
+  if (countSaveTimer) clearTimeout(countSaveTimer);
+  countSaveTimer = setTimeout(() => { countSaveTimer = null; queueSave(); }, 300);
+}
+
+async function flushCountSave() {
+  if (countSaveTimer) {
+    clearTimeout(countSaveTimer);
+    countSaveTimer = null;
+    await queueSave();
+  } else {
+    await saveTail.catch(() => {});
+  }
+}
 
 async function loadFileData(file) {
   const content = await app.vault.read(file);
@@ -329,6 +495,13 @@ function fuzzyScore(query, text) {
 let wakeLock = null;
 let localIntervalId = null;
 let disposed = false;
+const VIEW_LIFECYCLE_KEY = "__routineRunnerViewCleanup";
+
+// A Dataview rerun replaces this execution. Tear down the previous view's
+// observer/listeners before installing this one's lifecycle hooks.
+if (typeof window[VIEW_LIFECYCLE_KEY] === "function") {
+  window[VIEW_LIFECYCLE_KEY]();
+}
 
 async function requestWakeLock() {
   if (!("wakeLock" in navigator)) return;
@@ -378,17 +551,13 @@ function stopTimer() {
 
 function startTimer() {
   stopTimer();
-  state.lastTick = Date.now();
-  localIntervalId = setInterval(tick, 250);
+  activateCurrentSession();
+  localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
   state.intervalId = localIntervalId;
   requestWakeLock();
 }
 
 function tick() {
-  const now = Date.now();
-  const session = currentSession();
-  if (session && !session.paused) session.elapsedMs += now - state.lastTick;
-  state.lastTick = now;
   updateTimerDisplay();
 }
 
@@ -415,13 +584,46 @@ function enabledLeaves(nodes) {
   return flatten(nodes).filter((node) => node.children.length === 0 && effective(node, map));
 }
 
+function selectedRoutineTree(nodes) {
+  const enabledIds = new Set(enabledLeaves(nodes).map((task) => task.id));
+  function keep(node) {
+    const children = node.children.map(keep).filter(Boolean);
+    if (!enabledIds.has(node.id) && children.length === 0) return null;
+    return { ...node, children };
+  }
+  return nodes.map(keep).filter(Boolean);
+}
+
 function currentTask() {
   return nodeMap().get(state.focusId) || null;
 }
 
 function currentSession() {
   if (!state.focusId) return null;
-  return state.sessions[state.focusId] || (state.sessions[state.focusId] = { elapsedMs: 0, count: 0, paused: false });
+  return state.sessions[state.focusId] || (state.sessions[state.focusId] = {
+    elapsedBeforeStartMs: 0,
+    startedAt: null,
+    count: 0,
+  });
+}
+
+function elapsedForSession(session, now = Date.now()) {
+  if (!session) return 0;
+  const currentRunMs = session.startedAt !== null
+    ? Math.max(0, now - session.startedAt)
+    : 0;
+  return session.elapsedBeforeStartMs + currentRunMs;
+}
+
+function settleSession(session, now = Date.now()) {
+  if (!session || session.startedAt === null) return;
+  session.elapsedBeforeStartMs += Math.max(0, now - session.startedAt);
+  session.startedAt = null;
+}
+
+function activateCurrentSession(now = Date.now()) {
+  const session = currentSession();
+  if (session && session.startedAt === null) session.startedAt = now;
 }
 
 function taskPath(node, map = nodeMap()) {
@@ -434,17 +636,148 @@ function pathLabel(node, map = nodeMap()) {
   return taskPath(node, map).map((part) => part.display).join(" → ");
 }
 
+function arraysEqual(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => item === b[i]);
+}
+
+// Identity is deliberately source-based instead of being written into task lines.
+// Exact text and ancestry dominate; the old line number breaks nearby ties.
+function matchTaskRecord(record, candidates, map, reportAmbiguity = true) {
+  const source = record?.["source-line"];
+  const path = record?.["task-path"] ?? record?.["ancestry-path"];
+  const hint = Number(record?.["line-hint"]);
+  const scored = candidates.map((task) => {
+    const candidatePath = taskPath(task, map).map((part) => part.display);
+    let score = 0;
+    if (source === task.sourceLine) score += 100;
+    if (arraysEqual(path, candidatePath)) score += 80;
+    if (path?.at(-1) === candidatePath.at(-1)) score += 20;
+    const distance = Number.isFinite(hint) ? Math.abs(task.line - hint) : 100000;
+    if (arraysEqual(path?.slice(0, -1), candidatePath.slice(0, -1))) score += 60;
+    if (distance === 0) score += 70;
+    else if (distance <= 3) score += 30 - distance * 5;
+    return { task, score, distance };
+  }).filter((item) => item.score >= 70)
+    .sort((a, b) => b.score - a.score || a.distance - b.distance);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score && scored[0].distance === scored[1].distance) {
+    if (reportAmbiguity) return { ambiguous: true };
+    return null;
+  }
+  return scored[0].task;
+}
+
+function removeSessionsForIds(ids) {
+  const remove = new Set(ids);
+  for (const id of remove) delete state.sessions[id];
+  if (!state.file) return;
+  const map = nodeMap();
+  state.sessionLedger = state.sessionLedger.filter((entry) => {
+    if (entry["source-file"] !== state.file.path) return true;
+    const task = matchTaskRecord(entry, flatten(state.runTasks), map, false);
+    return !task || !remove.has(task.id);
+  });
+}
+
+function hydrateSessions() {
+  state.sessions = {};
+  const tasks = flatten(state.runTasks);
+  const map = nodeMap();
+  const warnings = [];
+  const runningEntries = state.sessionLedger.filter((entry) =>
+    entry?.["source-file"] === state.file.path && entry["started-at"] != null
+  );
+  for (const entry of state.sessionLedger) {
+    if (entry?.["source-file"] !== state.file.path) continue;
+    const match = matchTaskRecord(entry, tasks, map);
+    if (!match) { warnings.push(`Unmatched cached session near line ${entry?.["line-hint"] ?? "?"}`); continue; }
+    if (match.ambiguous) { warnings.push(`Ambiguous cached session near line ${entry?.["line-hint"] ?? "?"}`); continue; }
+    if (state.sessions[match.id]) { warnings.push(`Multiple cached sessions matched “${match.display}”`); continue; }
+    state.sessions[match.id] = {
+      elapsedBeforeStartMs: Math.max(0, Number(entry["elapsed-before-start"]) || 0),
+      startedAt: parseStartedAt(entry["started-at"]),
+      count: Math.max(0, Number(entry.count) || 0),
+    };
+  }
+  // A malformed/manual edit must not create several live clocks.
+  for (const [id, session] of Object.entries(state.sessions)) {
+    if (id !== state.focusId && session.startedAt !== null) session.startedAt = null;
+  }
+  // Only the focused task is allowed to have a live clock. If source edits made
+  // that one session impossible to match, carry its timing onto the restored
+  // focus instead of silently presenting a paused timer.
+  const focusedSession = state.sessions[state.focusId];
+  if ((!focusedSession || focusedSession.startedAt === null) && runningEntries.length === 1) {
+    const entry = runningEntries[0];
+    state.sessions[state.focusId] = {
+      elapsedBeforeStartMs: Math.max(0, Number(entry["elapsed-before-start"]) || 0),
+      startedAt: parseStartedAt(entry["started-at"]),
+      count: Math.max(0, Number(entry.count) || 0),
+    };
+    state.sessionLedger = state.sessionLedger.filter((candidate) => candidate !== entry);
+    warnings.push("Recovered the running timer onto the current task after source edits");
+  }
+  if (warnings.length) new Notice(warnings.join("\n"), 9000);
+}
+
+async function restoreRoutine(saved) {
+  const file = app.vault.getAbstractFileByPath(saved?.["source-file"] ?? "");
+  if (!file) throw new Error(`routine source file not found: ${saved?.["source-file"] ?? "(missing)"}`);
+  state.file = file;
+  const data = await loadFileData(file);
+  state.headings = data.headings;
+  state.totalLines = data.totalLines;
+  state.allTasks = data.tasks;
+  if (saved.section == null) state.sectionIdx = "";
+  else {
+    const choices = data.headings.map((h, idx) => ({ h, idx })).filter(({ h }) => h.text === saved.section);
+    choices.sort((a, b) => Math.abs(a.h.line - Number(saved["section-line-hint"])) - Math.abs(b.h.line - Number(saved["section-line-hint"])));
+    state.sectionIdx = choices.length ? String(choices[0].idx) : "";
+  }
+  recomputeTasksForSection();
+  const available = flatten(state.tasks);
+  const availableMap = nodeMap(state.tasks);
+  const used = new Set();
+  const restored = [];
+  const warnings = [];
+  for (const record of saved.tasks ?? []) {
+    const match = matchTaskRecord(record, available.filter((t) => !used.has(t.id)), availableMap);
+    const label = (record?.["task-path"] ?? []).join(" → ") || record?.["source-line"] || "unknown task";
+    if (!match) { warnings.push(`Removed stale routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
+    if (match.ambiguous) { warnings.push(`Removed ambiguous routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
+    used.add(match.id);
+    restored.push({ ...match, id: record.id, parentId: record.parent ?? null, children: [] });
+  }
+  const restoredMap = new Map(restored.map((task) => [task.id, task]));
+  for (const task of restored) if (task.parentId && restoredMap.has(task.parentId)) restoredMap.get(task.parentId).children.push(task);
+  state.runTasks = restored.filter((task) => !task.parentId || !restoredMap.has(task.parentId));
+  if (!state.runTasks.length) throw new Error("no cached routine tasks could be matched");
+  state.retiredIds = (saved.tasks ?? []).filter((task) => task.retired).map((task) => task.id).filter((id) => restoredMap.has(id));
+  state.leaveUnchecked = Boolean(saved.options?.["leave-unchecked"]);
+  state.completedCount = Math.max(0, Number(saved.progress?.["completed-count"]) || 0);
+  state.totalLeafCount = Math.max(0, Number(saved.progress?.["total-leaf-count"]) || enabledLeaves(state.runTasks).length);
+  state.processedLeafCount = Math.max(0, Number(saved.progress?.["processed-leaf-count"]) || 0);
+  state.activeLeafId = restoredMap.has(saved["active-leaf"]) ? saved["active-leaf"] : enabledLeaves(state.runTasks).find((t) => !state.retiredIds.includes(t.id))?.id;
+  state.focusId = restoredMap.has(saved["focused-task"]) ? saved["focused-task"] : state.activeLeafId;
+  if (!state.activeLeafId || !state.focusId) throw new Error("cached routine has no remaining active task");
+  state.screen = "run";
+  hydrateSessions();
+  if (warnings.length) new Notice(warnings.join("\n"), 9000);
+  return warnings.length > 0;
+}
+
 function updateTimerDisplay() {
   if (state.screen !== "run" || !refs.timerEl) return;
   const task = currentTask();
   if (!task) return;
   const session = currentSession();
   const estimateMs = task.estimateMs;
-  const remainingMs = estimateMs - session.elapsedMs;
+  const elapsedMs = elapsedForSession(session);
+  const remainingMs = estimateMs - elapsedMs;
   const overdue = remainingMs < 0;
   refs.timerEl.textContent = formatDuration(remainingMs);
   refs.timerEl.toggleClass("rr-overdue", overdue);
-  const pct = Math.min(100, (session.elapsedMs / estimateMs) * 100);
+  const pct = Math.min(100, (elapsedMs / estimateMs) * 100);
   refs.barFillEl.style.width = pct + "%";
   refs.barFillEl.toggleClass("rr-overdue", overdue);
 }
@@ -454,23 +787,52 @@ function render() {
   statusMenuEl = null;
   container.empty();
   refs = {};
+  if (state.cacheError) container.createDiv({ cls: "rr-error", text: state.cacheError });
   if (state.screen === "run") renderRun();
   else if (state.screen === "done") renderDone();
   else renderSetup();
 }
 
 function renderNoteCombo() {
-  const input = container.createEl("input", {
+  const row = container.createDiv({ cls: "rr-note-row" });
+  const input = row.createEl("input", {
     cls: "rr-input",
     attr: { type: "text", placeholder: "Type a note name…" },
+  });
+  const dailyBtn = row.createEl("button", {
+    cls: "rr-daily-btn",
+    text: "Today",
+    attr: { type: "button", title: "Use today's Daily Note" },
   });
   input.value = state.file ? state.file.basename : state.noteQuery;
   const list = container.createDiv({ cls: "rr-pick-list" });
   list.style.display = "none";
 
+  dailyBtn.addEventListener("click", async () => {
+    const dailyNotes = app.internalPlugins?.getPluginById?.("daily-notes");
+    if (!dailyNotes?.enabled || !dailyNotes.instance) {
+      new Notice("Enable Obsidian's Daily notes core plugin to use this shortcut.", 6000);
+      return;
+    }
+
+    const options = dailyNotes.instance.options ?? {};
+    const format = options.format || "YYYY-MM-DD";
+    const folder = String(options.folder || "").replace(/^\/+|\/+$/g, "");
+    const datedPath = window.moment().format(format).replace(/^\/+|\/+$/g, "");
+    const path = [folder, datedPath].filter(Boolean).join("/") + ".md";
+    const file = app.vault.getAbstractFileByPath(path);
+    if (!file || file.extension !== "md") {
+      new Notice(`Today's Daily Note was not found at ${path}.`, 6000);
+      return;
+    }
+
+    list.style.display = "none";
+    await selectFile(file);
+  });
+
   function renderList(query) {
     list.empty();
-    const files = app.vault.getMarkdownFiles();
+    const files = app.vault.getMarkdownFiles().filter((file) => file.path !== CACHE_PATH);
     let matches;
     if (!query || query.trim() === "") {
       matches = files
@@ -826,8 +1188,9 @@ function renderSetup() {
       : "Select at least one leaf task",
   });
   startBtn.disabled = selectedCount === 0;
-  startBtn.addEventListener("click", () => {
-    state.runTasks = state.tasks;
+  startBtn.addEventListener("click", async () => {
+    // Persist only enabled leaves and the ancestors needed to retain their paths.
+    state.runTasks = selectedRoutineTree(state.tasks);
     const leaves = enabledLeaves(state.runTasks);
     state.index = 0;
     state.activeLeafId = leaves[0].id;
@@ -838,8 +1201,10 @@ function renderSetup() {
     state.processedLeafCount = 0;
     state.completedCount = 0;
     state.screen = "run";
-    render();
+    hydrateSessions();
     startTimer();
+    render();
+    await queueSave();
   });
 }
 
@@ -862,7 +1227,13 @@ async function selectFile(file) {
 }
 
 async function stopRoutine() {
+  await flushCountSave();
+  settleSession(currentSession());
   stopTimer();
+  const keepId = state.focusId;
+  removeSessionsForIds(Object.keys(state.sessions).filter((id) => id !== keepId));
+  state.screen = "setup";
+  await queueSave();
   if (state.file) {
     const data = await loadFileData(state.file);
     state.headings = data.headings;
@@ -871,7 +1242,6 @@ async function stopRoutine() {
     recomputeTasksForSection();
   }
   state.runTasks = [];
-  state.screen = "setup";
   render();
 }
 
@@ -915,6 +1285,7 @@ function renderRun() {
     function setCount(n) {
       session.count = Math.max(0, n);
       valueEl.textContent = String(session.count);
+      scheduleCountSave();
     }
 
     function startEdit() {
@@ -949,11 +1320,17 @@ function renderRun() {
   refs.barFillEl = bar.createDiv({ cls: "rr-bar-fill" });
 
   const btnRow = card.createDiv({ cls: "rr-btn-row" });
-  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: session.paused ? "Resume" : "Pause" });
-  pauseBtn.addEventListener("click", () => {
-    session.paused = !session.paused;
-    state.lastTick = Date.now();
-    pauseBtn.textContent = session.paused ? "Resume" : "Pause";
+  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: session.startedAt === null ? "Resume" : "Pause" });
+  pauseBtn.addEventListener("click", async () => {
+    const now = Date.now();
+    if (session.startedAt === null) {
+      session.startedAt = now;
+    } else {
+      settleSession(session, now);
+    }
+    pauseBtn.textContent = session.startedAt === null ? "Resume" : "Pause";
+    updateTimerDisplay();
+    await queueSave();
   });
   const skipBtn = btnRow.createEl("button", { cls: "rr-btn", text: "Skip" });
   skipBtn.addEventListener("click", () => advance(false));
@@ -995,10 +1372,15 @@ function renderDone() {
   });
 }
 
-function focusTask(id) {
+async function focusTask(id) {
+  await flushCountSave();
+  const departingId = state.focusId;
+  settleSession(currentSession());
+  removeSessionsForIds([departingId]);
   state.focusId = id;
-  state.lastTick = Date.now();
+  activateCurrentSession();
   render();
+  await queueSave();
 }
 
 async function configuredTaskStatuses() {
@@ -1072,11 +1454,14 @@ async function showStatusMenu(anchor) {
   menu.focus();
 }
 
-function advance(wasDone) {
+async function advance(wasDone) {
+  await flushCountSave();
+  settleSession(currentSession());
   if (wasDone) state.completedCount++;
   const focused = currentTask();
   const retired = new Set(state.retiredIds);
   const branchIds = new Set(flatten([focused]).map((node) => node.id));
+  removeSessionsForIds(branchIds);
   branchIds.forEach((id) => retired.add(id));
   const leaves = enabledLeaves(state.runTasks);
   const affectedLeaves = leaves.filter((leaf) => branchIds.has(leaf.id) && !state.retiredIds.includes(leaf.id));
@@ -1089,10 +1474,12 @@ function advance(wasDone) {
     state.activeLeafId = next.id;
     state.focusId = next.id;
     state.screen = "run";
+    activateCurrentSession();
   } else {
     state.screen = "done";
   }
   render();
+  await queueSave();
 }
 
 // Terminal status choices first use Tasks' completion transformation so recurrence
@@ -1100,7 +1487,7 @@ function advance(wasDone) {
 // converted to the chosen symbol and its date marker is normalized for that type.
 async function completeCurrentTask(selectedStatus = null) {
   if (state.leaveUnchecked) {
-    advance(true);
+    await advance(true);
     return;
   }
 
@@ -1160,7 +1547,7 @@ async function completeCurrentTask(selectedStatus = null) {
     }).join("\n");
   }
 
-  const elapsedLabel = formatDuration(session.elapsedMs);
+  const elapsedLabel = formatDuration(elapsedForSession(session));
   const resultText = task.goalCount != null ? `🏁 ${elapsedLabel} 🥅 ${session.count}` : `🏁 ${elapsedLabel}`;
   const replacementLines = replacement.split("\n").map((line) => {
     const lm = line.match(TASK_LINE_RE);
@@ -1177,24 +1564,90 @@ async function completeCurrentTask(selectedStatus = null) {
     flatten(state.runTasks).forEach((t) => { if (t.line > task.line) t.line += shift; });
   }
 
-  advance(true);
+  await advance(true);
 }
 
-render();
-// Rehydrated mid-routine from a prior execution: resume ticking in this
-// context. The previous context's interval was retired during initialization,
-// and each watchdog below can stop only the interval its own context created.
-if (state.screen === "run") startTimer();
+async function initializeFromCache() {
+  const cacheFile = app.vault.getAbstractFileByPath(CACHE_PATH);
+  if (!cacheFile) {
+    state.sessionLedger = [];
+    state.cacheError = null;
+    state.cacheWritable = true;
+    state.screen = "setup";
+    render();
+    await queueSave();
+    return;
+  }
+  try {
+    const cached = cacheFrontmatter(await app.vault.read(cacheFile), cacheFile);
+    state.cacheError = null;
+    state.cacheWritable = true;
+    state.sessionLedger = cached.sessions;
+    if (cached.routine) {
+      const routinePruned = await restoreRoutine(cached.routine);
+      // Preserve the persisted paused/running state. A non-null started-at
+      // naturally accounts for time spent closed; intervals only repaint.
+      render();
+      localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
+      state.intervalId = localIntervalId;
+      requestWakeLock();
+      // Persist the successfully restored subset once so stale/ambiguous task
+      // records do not warn again on every Dataview rerun.
+      if (routinePruned) queueSave();
+    } else {
+      state.screen = "setup";
+      state.runTasks = [];
+      state.sessions = {};
+      render();
+    }
+  } catch (error) {
+    state.cacheWritable = false;
+    state.cacheError = `${CACHE_NAME} was not loaded: ${error.message}. Fix its YAML and rerun this block; it will not be overwritten.`;
+    render();
+    if (state.screen === "run") {
+      localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
+      state.intervalId = localIntervalId;
+      requestWakeLock();
+    }
+  }
+}
 
-const watchdog = new MutationObserver(() => {
-  if (!document.body.contains(container)) {
-    disposed = true;
+await initializeFromCache();
+
+let containerAttached = document.body.contains(container);
+
+function syncViewAttachment() {
+  const isAttached = document.body.contains(container);
+  if (isAttached === containerAttached) return;
+  containerAttached = isAttached;
+  if (!isAttached) {
     statusMenuEl?.remove();
     statusMenuEl = null;
+    // Keep timestamp-based session time running, but suspend work that only
+    // serves this view while Obsidian has its DOM detached.
     stopTimer();
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-    watchdog.disconnect();
+    return;
   }
-});
+  disposed = false;
+  if (state.screen === "run" && !localIntervalId) {
+    tick();
+    localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
+    state.intervalId = localIntervalId;
+    requestWakeLock();
+  }
+}
+
+const watchdog = new MutationObserver(syncViewAttachment);
 watchdog.observe(document.body, { childList: true, subtree: true });
+
+const cleanupView = () => {
+  disposed = true;
+  watchdog.disconnect();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  statusMenuEl?.remove();
+  statusMenuEl = null;
+  stopTimer();
+  if (window[VIEW_LIFECYCLE_KEY] === cleanupView) delete window[VIEW_LIFECYCLE_KEY];
+};
+window[VIEW_LIFECYCLE_KEY] = cleanupView;
 ```
