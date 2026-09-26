@@ -18,8 +18,9 @@ modified: 2026-09-25T00:00:00-04:00
 <li>Indented checkbox tasks form a tree. Before starting, uncheck any task you want to leave out; disabling a parent temporarily disables its descendants without forgetting their choices. The ↑ / ↓ buttons reorder siblings only, and moving a parent carries its whole subtree for this run without editing the note.</li>
 <li>For long routines, use the sticky setup toolbar to search tasks and enable, disable, collapse, or expand direct matches; dimmed ancestor rows are context only. With a blank search, Enable/Disable affects the top-level gates (preserving descendant choices), while Expand/Collapse applies to the whole tree. Reset restores the current note and section's original task order, selections, search, and expansion state.</li>
 <li>The setup tree supports Vim-style keys: <code>j</code>/<code>k</code> move, <code>h</code>/<code>l</code> collapse/expand, <code>Space</code> or <code>x</code> toggles, <code>Shift-K</code>/<code>Shift-J</code> reorders among siblings, <code>g g</code>/<code>G</code> jumps to the first/last row, and <code>/</code> focuses search.</li>
-<li>The ordinary run visits enabled structural leaves in depth-first order. Task and “Next” labels show the complete path. While working on a leaf, click its breadcrumb ancestors to work on their independent timers/counts; click a lower breadcrumb or <strong>Return to leaf</strong> to resume the saved descendant.</li>
+<li>The ordinary run visits enabled structural leaves in depth-first order. Task and “Next” labels show the complete path. Click any breadcrumb to move between the leaf and its ancestors; each task keeps its own independent timer/count state.</li>
 <li><strong>Done</strong> hooks into the Tasks plugin's own completion command (respects custom done symbols / recurrence) if the plugin is installed; otherwise it falls back to a plain <code>[ ]</code> → <code>[x]</code> toggle. It also records <code>🏁 mm:ss</code> (or <code>🏁 hh:mm:ss</code> past an hour) — and for a task with a count goal, <code>🥅 n</code> alongside it — the actual time (and count) achieved. These are inserted right before any Tasks plugin metadata (dates, priority, recurrence, done date, …), so the order stays description → tags → routine runner markers → Tasks plugin metadata.</li>
+<li>Right-click <strong>Done</strong> to choose any status configured in the Tasks plugin, such as <code>[-]</code> for Cancelled. Terminal statuses use Tasks' completion processing for recurrence and on-completion behavior, then receive the appropriate done or cancelled date; non-terminal statuses are applied directly.</li>
 <li><strong>Skip</strong> advances without touching the file.</li>
 <li>Using <strong>Done</strong> or <strong>Skip</strong> while focused on an ancestor retires that ancestor's remaining branch for this run and advances to the first leaf after it. Done edits only the focused ancestor; it does not check descendants.</li>
 <li>The <strong>Leave tasks unchecked</strong> toggle (off by default) makes <strong>Done</strong> behave like Skip — it advances and still counts toward the completed total, but never edits the file. Use it for lists where you don't want completion status recorded.</li>
@@ -134,7 +135,6 @@ style.textContent = `
     .rr-crumb { cursor:pointer; color:var(--interactive-accent); }
     .rr-crumb-current { cursor:default; color:var(--text-normal); }
     .rr-crumb-sep { color:var(--text-faint); padding:0 0.35em; }
-    .rr-return { margin:0 0 0.75em; padding:3px 9px; font-size:0.85em; }
     .rr-est { color:var(--text-muted); font-size:0.85em; margin-bottom:0.75em; }
     .rr-timer-row { text-align:center; }
     .rr-timer { font-size:2.2em; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text-normal); }
@@ -155,6 +155,11 @@ style.textContent = `
     .rr-btn:disabled { opacity:0.5; cursor:default; }
     .rr-btn-primary { background:var(--interactive-accent); color:var(--text-on-accent); border-color:var(--interactive-accent); }
     .rr-btn-primary:hover { background:var(--interactive-accent-hover); }
+    .rr-status-menu { position:fixed; z-index:var(--layer-menu, 1000); min-width:190px; max-height:60vh; overflow:auto; padding:4px; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:var(--shadow-s); }
+    .rr-status-option { display:flex; width:100%; gap:0.6em; align-items:center; padding:6px 9px; border:0; border-radius:4px; background:transparent; color:var(--text-normal); text-align:left; cursor:pointer; }
+    .rr-status-option:hover, .rr-status-option:focus { background:var(--background-modifier-hover); }
+    .rr-status-symbol { min-width:2.2em; font-family:var(--font-monospace); }
+    .rr-status-type { margin-left:auto; color:var(--text-muted); font-size:0.8em; }
     .rr-btn-stop { flex:none; padding:4px 14px; font-size:0.85em; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
     .rr-btn-stop:hover { background:var(--interactive-hover); }
     .rr-next { margin-top:0.75em; color:var(--text-muted); font-size:0.9em; }
@@ -199,13 +204,17 @@ const defaultState = {
 };
 
 const priorState = window[RR_STATE_KEY];
-if (priorState && priorState.version !== STATE_VERSION && priorState.intervalId) {
+// A Dataview re-run creates a new execution context. Retire the interval owned
+// by the previous context up front; the new context starts its own below.
+if (priorState?.intervalId) {
   clearInterval(priorState.intervalId);
+  priorState.intervalId = null;
 }
 const state = priorState?.version === STATE_VERSION ? priorState : { ...defaultState };
 window[RR_STATE_KEY] = state;
 
 let refs = {};
+let statusMenuEl = null;
 
 async function loadFileData(file) {
   const content = await app.vault.read(file);
@@ -318,12 +327,21 @@ function fuzzyScore(query, text) {
 }
 
 let wakeLock = null;
+let localIntervalId = null;
+let disposed = false;
 
 async function requestWakeLock() {
   if (!("wakeLock" in navigator)) return;
   try {
-    wakeLock = await navigator.wakeLock.request("screen");
-    wakeLock.addEventListener("release", () => { wakeLock = null; });
+    const requestedLock = await navigator.wakeLock.request("screen");
+    if (disposed) {
+      requestedLock.release().catch(() => {});
+      return;
+    }
+    wakeLock = requestedLock;
+    requestedLock.addEventListener("release", () => {
+      if (wakeLock === requestedLock) wakeLock = null;
+    });
   } catch (e) {
     wakeLock = null;
   }
@@ -339,16 +357,21 @@ function releaseWakeLock() {
 // The OS revokes the wake lock whenever the screen actually turns off, so it
 // has to be re-requested once the app is visible again — otherwise the next
 // screen-off is permanent for the rest of the routine.
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && state.intervalId && !wakeLock) {
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible" && localIntervalId && !wakeLock) {
     requestWakeLock();
   }
-});
+};
+document.addEventListener("visibilitychange", handleVisibilityChange);
 
 function stopTimer() {
-  if (state.intervalId) {
-    clearInterval(state.intervalId);
-    state.intervalId = null;
+  // Each Dataview execution owns only its local interval. In particular, an
+  // old view's delayed MutationObserver must never clear a replacement view's
+  // newly started interval through the shared state object.
+  if (localIntervalId) {
+    clearInterval(localIntervalId);
+    if (state.intervalId === localIntervalId) state.intervalId = null;
+    localIntervalId = null;
   }
   releaseWakeLock();
 }
@@ -356,7 +379,8 @@ function stopTimer() {
 function startTimer() {
   stopTimer();
   state.lastTick = Date.now();
-  state.intervalId = setInterval(tick, 250);
+  localIntervalId = setInterval(tick, 250);
+  state.intervalId = localIntervalId;
   requestWakeLock();
 }
 
@@ -426,6 +450,8 @@ function updateTimerDisplay() {
 }
 
 function render() {
+  statusMenuEl?.remove();
+  statusMenuEl = null;
   container.empty();
   refs = {};
   if (state.screen === "run") renderRun();
@@ -876,10 +902,6 @@ function renderRun() {
     });
     if (part.id !== task.id) crumb.addEventListener("click", () => focusTask(part.id));
   });
-  if (task.id !== state.activeLeafId) {
-    const returnBtn = card.createEl("button", { cls: "rr-btn rr-return", text: "Return to leaf" });
-    returnBtn.addEventListener("click", () => focusTask(state.activeLeafId));
-  }
   card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
 
   if (task.goalCount != null) {
@@ -937,6 +959,11 @@ function renderRun() {
   skipBtn.addEventListener("click", () => advance(false));
   const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
   doneBtn.addEventListener("click", () => completeCurrentTask());
+  doneBtn.setAttribute("title", "Right-click to choose a Tasks status");
+  doneBtn.addEventListener("contextmenu", async (e) => {
+    e.preventDefault();
+    await showStatusMenu(doneBtn);
+  });
 
   const retired = new Set(state.retiredIds);
   flatten([task]).forEach((node) => retired.add(node.id));
@@ -974,6 +1001,77 @@ function focusTask(id) {
   render();
 }
 
+async function configuredTaskStatuses() {
+  const defaults = [
+    { symbol: " ", name: "Todo", type: "TODO" },
+    { symbol: "x", name: "Done", type: "DONE" },
+  ];
+  const fallbackCustom = [
+    { symbol: "/", name: "In Progress", type: "IN_PROGRESS" },
+    { symbol: "-", name: "Cancelled", type: "CANCELLED" },
+  ];
+  const plugin = app.plugins.plugins["obsidian-tasks-plugin"];
+  let settings;
+  try {
+    settings = await plugin?.loadData?.();
+  } catch (e) {
+    settings = null;
+  }
+  const configured = settings?.statusSettings;
+  const statuses = [
+    ...(configured?.coreStatuses ?? defaults),
+    ...(configured?.customStatuses ?? fallbackCustom),
+  ];
+  const seen = new Set();
+  return statuses.filter((status) => {
+    if (typeof status?.symbol !== "string" || status.symbol.length !== 1 || seen.has(status.symbol)) return false;
+    seen.add(status.symbol);
+    return true;
+  });
+}
+
+async function showStatusMenu(anchor) {
+  statusMenuEl?.remove();
+  const statuses = await configuredTaskStatuses();
+  if (state.screen !== "run" || !document.body.contains(anchor)) return;
+  const menu = document.body.createDiv({ cls: "rr-status-menu" });
+  statusMenuEl = menu;
+  menu.tabIndex = -1;
+  statuses.forEach((status) => {
+    const option = menu.createEl("button", { cls: "rr-status-option" });
+    option.createSpan({ cls: "rr-status-symbol", text: `[${status.symbol}]` });
+    option.createSpan({ text: status.name || "Unnamed" });
+    if (status.type) option.createSpan({ cls: "rr-status-type", text: status.type.replaceAll("_", " ") });
+    option.addEventListener("click", () => {
+      menu.remove();
+      statusMenuEl = null;
+      completeCurrentTask(status.symbol === "x" ? null : status);
+    });
+  });
+  const rect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.max(4, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 4));
+  const top = rect.top >= menuRect.height + 6
+    ? rect.top - menuRect.height - 6
+    : Math.min(rect.bottom + 6, window.innerHeight - menuRect.height - 4);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${Math.max(4, top)}px`;
+  menu.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      menu.remove();
+      statusMenuEl = null;
+      anchor.focus();
+    }
+  });
+  menu.addEventListener("focusout", () => setTimeout(() => {
+    if (!menu.contains(document.activeElement)) {
+      menu.remove();
+      if (statusMenuEl === menu) statusMenuEl = null;
+    }
+  }, 0));
+  menu.focus();
+}
+
 function advance(wasDone) {
   if (wasDone) state.completedCount++;
   const focused = currentTask();
@@ -997,10 +1095,10 @@ function advance(wasDone) {
   render();
 }
 
-// Tasks plugin's own toggle command respects custom done symbols and recurrence;
-// it can return multiple lines (e.g. a new recurring instance), so later tasks'
-// stored line numbers are shifted to match.
-async function completeCurrentTask() {
+// Terminal status choices first use Tasks' completion transformation so recurrence
+// and on-completion behavior are preserved. The completed occurrence is then
+// converted to the chosen symbol and its date marker is normalized for that type.
+async function completeCurrentTask(selectedStatus = null) {
   if (state.leaveUnchecked) {
     advance(true);
     return;
@@ -1034,11 +1132,32 @@ async function completeCurrentTask() {
   }
 
   const tasksApi = app.plugins.plugins["obsidian-tasks-plugin"]?.apiV1;
+  const terminalTypes = new Set(["DONE", "CANCELLED", "NON_TASK"]);
+  const useTasksCompletion = selectedStatus === null || terminalTypes.has(selectedStatus.type);
   let replacement;
-  if (tasksApi && typeof tasksApi.executeToggleTaskDoneCommand === "function") {
+  if (useTasksCompletion && tasksApi && typeof tasksApi.executeToggleTaskDoneCommand === "function") {
     replacement = tasksApi.executeToggleTaskDoneCommand(rawLine, state.file.path);
+  } else if (selectedStatus !== null) {
+    replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${selectedStatus.symbol}${p3}${p4}`);
   } else {
     replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}x${p3}${p4}`);
+  }
+
+  if (selectedStatus !== null && useTasksCompletion) {
+    let pluginSettings = null;
+    try {
+      pluginSettings = await app.plugins.plugins["obsidian-tasks-plugin"]?.loadData?.();
+    } catch (e) {}
+    const date = window.moment().format("YYYY-MM-DD");
+    replacement = replacement.split("\n").map((line) => {
+      const match = line.match(TASK_LINE_RE);
+      if (!match || match[2] === " ") return line;
+      let changed = line.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${selectedStatus.symbol}${p3}${p4}`);
+      changed = changed.replace(/\s+[✅❌]\s*\d{4}-\d{2}-\d{2}/gu, "").replace(/\s+$/, "");
+      if (selectedStatus.type === "DONE" && pluginSettings?.setDoneDate !== false) changed += ` ✅ ${date}`;
+      if (selectedStatus.type === "CANCELLED" && pluginSettings?.setCancelledDate !== false) changed += ` ❌ ${date}`;
+      return changed;
+    }).join("\n");
   }
 
   const elapsedLabel = formatDuration(session.elapsedMs);
@@ -1063,13 +1182,17 @@ async function completeCurrentTask() {
 
 render();
 // Rehydrated mid-routine from a prior execution: resume ticking in this
-// context. startTimer() clears any interval id first, so this is safe even
-// if the old instance's watchdog (below) hasn't fired yet to null it out.
+// context. The previous context's interval was retired during initialization,
+// and each watchdog below can stop only the interval its own context created.
 if (state.screen === "run") startTimer();
 
 const watchdog = new MutationObserver(() => {
   if (!document.body.contains(container)) {
+    disposed = true;
+    statusMenuEl?.remove();
+    statusMenuEl = null;
     stopTimer();
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     watchdog.disconnect();
   }
 });
