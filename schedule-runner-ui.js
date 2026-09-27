@@ -1,8 +1,9 @@
 /* Schedule Runner Obsidian/Dataview UI adapter. */
 (async function ({ dv, app, moment, Notice, config }) {
 const DIR = dv.current().file.folder;
-  const CORE_PATH = `${DIR}/schedule-runner.js`;
+const CORE_PATH = `${DIR}/schedule-runner.js`;
 const UNDO_KEY = "__scheduledBlocksUndo";
+const STATE_PATH = `${DIR}/schedule-runner-state.yaml`;
 
 try {
   // The core is a UMD module. Evaluating it only installs one namespaced object.
@@ -25,7 +26,7 @@ try {
   const root = dv.container;
   root.empty(); root.addClass("sb-root");
   const style = document.createElement("style");
-  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}.rr-embedded{margin-top:.65em;padding:1em;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--background-secondary)}.rr-embedded-header{color:var(--text-muted);font-size:.85em;margin-bottom:.35em}.rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est,.rr-next{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}.rr-timer{text-align:center;font-size:2.2em;font-weight:700;font-variant-numeric:tabular-nums}.rr-timer.rr-overdue{color:var(--color-red)}.rr-bar{height:10px;border-radius:5px;background:var(--background-modifier-border);overflow:hidden;margin:.75em 0 1em}.rr-bar-fill{height:100%;width:0;background:var(--color-green,#4caf50)}.rr-bar-fill.rr-overdue{background:var(--color-red)}.rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent)}.rr-count-row{display:flex;align-items:center;justify-content:center;gap:.6em;margin:.75em 0 1em}.rr-count-value{font-size:1.8em;font-weight:700}.rr-count-goal,.rr-count-sep{color:var(--text-muted);font-size:1.4em}.rr-next{margin-top:.75em;margin-bottom:0}.rr-embedded-done{text-align:center;font-weight:600}`;
+  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}.rr-embedded{margin-top:.65em;padding:1em;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--background-secondary)}.rr-embedded-header{color:var(--text-muted);font-size:.85em;margin-bottom:.35em}.rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est,.rr-next{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}.rr-timer{text-align:center;font-size:2.2em;font-weight:700;font-variant-numeric:tabular-nums}.rr-timer.rr-overdue{color:var(--color-red)}.rr-bar{height:10px;border-radius:5px;background:var(--background-modifier-border);overflow:hidden;margin:.75em 0 1em}.rr-bar-fill{height:100%;width:0;background:var(--color-green,#4caf50)}.rr-bar-fill.rr-overdue{background:var(--color-red)}.rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent)}.rr-count-row{display:flex;align-items:center;justify-content:center;gap:.6em;margin:.75em 0 1em}.rr-count-value{font-size:1.8em;font-weight:700;cursor:pointer}.rr-count-input{font-size:1.8em;width:3.2em;text-align:center}.rr-count-goal,.rr-count-sep{color:var(--text-muted);font-size:1.4em}.rr-next{margin-top:.75em;margin-bottom:0}.rr-embedded-done{text-align:center;font-weight:600}.rr-status-menu{position:fixed;z-index:1000;min-width:190px;padding:4px;border:1px solid var(--background-modifier-border);border-radius:6px;background:var(--background-primary);box-shadow:var(--shadow-s)}.rr-status-option{display:flex;width:100%;gap:.6em;padding:6px 9px;border:0;background:transparent;color:var(--text-normal);text-align:left}.rr-status-option:hover{background:var(--background-modifier-hover)}.rr-status-type{margin-left:auto;color:var(--text-muted);font-size:.8em}`;
   root.appendChild(style);
 
   const button = (label, fn, disabled = false) => { const b = document.createElement("button"); b.textContent = label; b.disabled = disabled; b.onclick = fn; return b; };
@@ -84,7 +85,27 @@ try {
     const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
     return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
-  const embeddedRuns = window.__scheduleRunnerRoutineRuns ?? (window.__scheduleRunnerRoutineRuns = { states: {}, disposers: [] });
+  const embeddedRuns = window.__scheduleRunnerRoutineRuns ?? (window.__scheduleRunnerRoutineRuns = { states: {}, disposers: [], actionTail: Promise.resolve(), loaded: false, saveTimer: null });
+  if (!embeddedRuns.loaded) {
+    const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
+    if (stateFile) {
+      try {
+        const saved = JSON.parse(await app.vault.read(stateFile));
+        if (saved["schedule-runner-state-version"] === 1 && saved.routines && typeof saved.routines === "object") embeddedRuns.states = saved.routines;
+      } catch (error) { new Notice(`Schedule runner state was not loaded: ${error.message}`); }
+    }
+    embeddedRuns.loaded = true;
+  }
+  const saveEmbeddedState = () => {
+    clearTimeout(embeddedRuns.saveTimer);
+    embeddedRuns.saveTimer = setTimeout(() => {
+      const snapshot = `${JSON.stringify({ "schedule-runner-state-version": 1, routines: embeddedRuns.states }, null, 2)}\n`;
+      embeddedRuns.actionTail = embeddedRuns.actionTail.then(async () => {
+        const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
+        if (stateFile) await app.vault.modify(stateFile, snapshot); else await app.vault.create(STATE_PATH, snapshot);
+      }).catch(error => new Notice(`Schedule runner state was not saved: ${error.message}`));
+    }, 250);
+  };
   embeddedRuns.disposers.splice(0).forEach(dispose => dispose());
   const addEmbeddedRoutine = (card, evidence) => {
     if (!evidence?.isTask || evidence.lineIndex < 0) return;
@@ -94,14 +115,18 @@ try {
     const host = card.createDiv({ cls: "rr-embedded" });
     const runState = embeddedRuns.states[focusKey] ?? (embeddedRuns.states[focusKey] = RRE.createRunState());
     const view = RRE.renderRunner(host, {
-      content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
-      onRefresh: render,
-      onComplete: async (line, result) => {
-        try {
+      app, content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
+      onStateChange: saveEmbeddedState,
+      onRefresh: () => { embeddedRuns.actionTail = embeddedRuns.actionTail.then(render, render); },
+      onComplete: async (line, result, status) => {
+        embeddedRuns.actionTail = embeddedRuns.actionTail.then(async () => {
           const current = await app.vault.read(evidence.target);
-          await RRE.completeTask(app, evidence.target, current, line, null, result);
-        } catch (error) { new Notice(`Task completion failed: ${error.message}`); }
-        await render();
+          const rootLine = current.split(/\r?\n/).findIndex(value => value.match(new RegExp(`\\^${evidence.blockId}\\s*$`)));
+          const currentLine = RRE.lineForKey(current, rootLine, runState.focusKey) ?? line;
+          await RRE.completeTask(app, evidence.target, current, currentLine, status, result);
+          await render();
+        }).catch(error => { new Notice(`Task completion failed: ${error.message}`); });
+        await embeddedRuns.actionTail;
       },
     });
     embeddedRuns.disposers.push(view.dispose);

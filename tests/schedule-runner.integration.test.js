@@ -51,6 +51,8 @@ const scheduleUi = fs.readFileSync(path.join(root, "schedule-runner-ui.js"), "ut
 assert.match(scheduleUi, /schedule-runner\.js/);
 assert.match(scheduleUi, /routine-runner-embed\.js/);
 assert.match(scheduleUi, /renderRunner/);
+assert.match(scheduleUi, /schedule-runner-state\.yaml/);
+assert(!scheduleUi.includes("localStorage"), "Schedule runner state must not share browser-local storage");
 assert(!scheduleUi.includes("SB.doneTaskActuals"), "Task Done must not mutate Actual");
 const routineSource = compileDataview("routine-runner.md");
 assert.match(routineSource, /routine-runner-ui\.js/);
@@ -59,6 +61,7 @@ const routineUi = fs.readFileSync(path.join(root, "routine-runner-ui.js"), "utf8
 new Function(routineUi);
 assert.match(routineUi, /routine-runner\.js/);
 assert.match(routineUi, /routine-runner-embed\.js/);
+assert.match(routineUi, /RRE\.configuredTaskStatuses/);
 assert.match(routineUi, /🏁/u);
 const routineCore = fs.readFileSync(path.join(root, "routine-runner.js"), "utf8");
 assert.match(routineCore, /⏱️/u);

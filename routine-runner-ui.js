@@ -1296,32 +1296,7 @@ async function focusTask(id) {
 }
 
 async function configuredTaskStatuses() {
-  const defaults = [
-    { symbol: " ", name: "Todo", type: "TODO" },
-    { symbol: "x", name: "Done", type: "DONE" },
-  ];
-  const fallbackCustom = [
-    { symbol: "/", name: "In Progress", type: "IN_PROGRESS" },
-    { symbol: "-", name: "Cancelled", type: "CANCELLED" },
-  ];
-  const plugin = app.plugins.plugins["obsidian-tasks-plugin"];
-  let settings;
-  try {
-    settings = await plugin?.loadData?.();
-  } catch (e) {
-    settings = null;
-  }
-  const configured = settings?.statusSettings;
-  const statuses = [
-    ...(configured?.coreStatuses ?? defaults),
-    ...(configured?.customStatuses ?? fallbackCustom),
-  ];
-  const seen = new Set();
-  return statuses.filter((status) => {
-    if (typeof status?.symbol !== "string" || status.symbol.length !== 1 || seen.has(status.symbol)) return false;
-    seen.add(status.symbol);
-    return true;
-  });
+  return RRE.configuredTaskStatuses(app);
 }
 
 async function showStatusMenu(anchor) {
