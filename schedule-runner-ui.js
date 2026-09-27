@@ -2,16 +2,15 @@
 (async function ({ dv, app, moment, Notice, config }) {
 const DIR = dv.current().file.folder;
   const CORE_PATH = `${DIR}/schedule-runner.js`;
-const REGISTRY_PATH = config.registryPath || `${DIR}/projects.yaml`;
 const UNDO_KEY = "__scheduledBlocksUndo";
 
 try {
   // The core is a UMD module. Evaluating it only installs one namespaced object.
   (0, eval)(await app.vault.adapter.read(CORE_PATH));
   const SB = globalThis.ScheduleRunner;
-  const rawRegistry = SB.parseRegistryYaml(await app.vault.adapter.read(REGISTRY_PATH));
+  const rawRegistry = config.registry;
   const registry = SB.validateRegistry(rawRegistry);
-  if (!registry.ok) throw new Error(`Invalid projects.yaml:\n${registry.errors.join("\n")}`);
+  if (!registry.ok) throw new Error(`Invalid Schedule Runner registry:\n${registry.errors.join("\n")}`);
 
   const daily = app.internalPlugins.plugins["daily-notes"]?.instance;
   const cfg = daily?.options || {};

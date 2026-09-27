@@ -7,7 +7,21 @@ created: 2026-09-27
 
 ```dataviewjs
 const config = {
-  registryPath: `${dv.current().file.folder}/projects.yaml`,
+  registry: {
+    version: 1,
+    projects: {
+      w: { label: "Work", parents: [], aliases: [] },
+      甲: { label: "Project A", parents: ["w"], aliases: [] },
+      p: { label: "Personal", parents: [], aliases: [] },
+      運: { label: "Exercise", parents: [], aliases: [] },
+    },
+    "exclusive-groups": [],
+    settings: {
+      "warning-level": "conflicts-and-unconfirmed",
+      "undo-seconds": 10,
+      "new-scope-style": "compact",
+    },
+  },
 };
 const uiPath = `${dv.current().file.folder}/schedule-runner-ui.js`;
 globalThis.__scheduleRunnerEntry = { dv, app, moment, Notice, config };

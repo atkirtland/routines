@@ -1,21 +1,15 @@
 const assert = require("assert");
-const fs = require("fs");
 const path = require("path");
 const root = path.join(__dirname, "..");
 const S = require(path.join(root, "schedule-runner.js"));
 
-const registryFromDisk = S.parseRegistryYaml(fs.readFileSync(path.join(root, "projects.yaml"), "utf8"));
-assert.equal(registryFromDisk.version, 1);
-assert.deepEqual(registryFromDisk.projects["甲"].parents, ["w"]);
-assert.deepEqual(registryFromDisk["exclusive-groups"], []);
-assert.equal(registryFromDisk.settings["undo-seconds"], 10);
-assert.throws(() => S.parseRegistryYaml("projects:\n  w:\n    order: 1\n  w:\n    order: 2\n"), /Duplicate registry key/);
+assert.throws(() => S.parseRegistryYaml("projects:\n  w:\n    label: Work\n  w:\n    label: Duplicate\n"), /Duplicate registry key/);
 
 const raw = { version: 1, projects: {
-  w: { label: "Work", order: 10, parents: [], aliases: ["職"] },
-  甲: { label: "A", order: 20, parents: ["w"], aliases: [] },
-  p: { label: "Personal", order: 30, parents: [], aliases: [] },
-  運: { label: "Exercise", order: 40, parents: [], aliases: [] },
+  w: { label: "Work", parents: [], aliases: ["職"] },
+  甲: { label: "A", parents: ["w"], aliases: [] },
+  p: { label: "Personal", parents: [], aliases: [] },
+  運: { label: "Exercise", parents: [], aliases: [] },
 }, "exclusive-groups": [["w", "p"]], settings: {} };
 const reg = S.validateRegistry(raw); assert.equal(reg.ok, true, reg.errors?.join("\n"));
 const state = (a, b) => S.classify(a, b, reg).state;
@@ -35,11 +29,11 @@ assert.equal(S.resolveTaskClassification("Do it #t/w #t/運", "p"), "(w)/(運)")
 assert.equal(S.resolveTaskClassification("Do it", "p"), "p");
 assert.equal(S.resolveTaskClassification("Do it", null), true);
 
-assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["b"] }, b: { order: 2, parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
-assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
-assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [], aliases: ["x"] }, b: { order: 2, parents: [], aliases: ["x"] } }, "exclusive-groups": [] }).ok, false);
-assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [] } }, "exclusive-groups": [], settings: { "warning-level": "maybe" } }).ok, false);
-assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [] } }, "exclusive-groups": [], settings: { "new-scope-style": "dots" } }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { parents: ["b"] }, b: { parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { parents: [], aliases: ["x"] }, b: { parents: [], aliases: ["x"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { parents: [] } }, "exclusive-groups": [], settings: { "warning-level": "maybe" } }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { parents: [] } }, "exclusive-groups": [], settings: { "new-scope-style": "dots" } }).ok, false);
 
 let note = `# Day\n\n## Plan\n\n- 1000 w ^p-work\n  - 1000 +25m Pomodoro ^p-pomo\n    - 1000 Task A ^p-task-a\n    - 1010 — ^p-task-a-end\n- 1030-1130 coworking ^p-cowork\n`;
 const plan = S.parseSection(note, "Plan");

@@ -5,7 +5,7 @@ See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the feature ledger 
 This directory contains two deliberately separate runners:
 
 - `routine-runner.md` is the existing checkbox routine/countdown runner. Schedule Runner does not load, edit, or share state with it.
-- `schedule-runner.md` is the thin configuration/entry note. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`.
+- `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`.
 
 All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
 
@@ -43,9 +43,9 @@ primary      := registered-code | "(" expression ")"
 
 Concatenation and `/` are intersection (`p運 = p/運`); comma is union (`w,a`). Intersection binds more tightly (`p運,f = (p AND 運) OR f`), and parentheses override precedence. Compact concatenation requires one-grapheme registered codes. `/` never declares hierarchy.
 
-Hierarchy is held in `projects.yaml`: `parents` are transitive implication/subset edges, `aliases` preserve renamed codes, `order` defines canonical intersection display order, and `exclusive-groups` alone declare logical conflicts. Validation rejects multi-grapheme/duplicate codes or aliases, missing/duplicate orders, unknown parents or exclusive members, cycles, and projects that imply impossible exclusive combinations.
+The registry is the `config.registry` object in `schedule-runner.md`. The order of entries under `projects` defines canonical intersection display order. `parents` are transitive implication/subset edges, `aliases` preserve renamed codes, and `exclusive-groups` alone declare logical conflicts. Validation rejects multi-grapheme/duplicate codes or aliases, unknown parents or exclusive members, cycles, and projects that imply impossible exclusive combinations.
 
-Scope output uses registry `order`, canonicalizes aliases, and removes duplicate intersection members. Existing slash notation is retained; compact input remains compact. Newly combined scopes use `settings.new-scope-style`. Classification display follows `settings.warning-level` (`all`, `conflicts-and-unconfirmed`, `conflicts-only`, or `none`).
+Scope output uses the declaration order under `projects`, canonicalizes aliases, and removes duplicate intersection members. Existing slash notation is retained; compact input remains compact. Newly combined scopes use `settings.new-scope-style`. Classification display follows `settings.warning-level` (`all`, `conflicts-and-unconfirmed`, `conflicts-only`, or `none`).
 
 For task evidence `T` and inherited block requirement `B`:
 

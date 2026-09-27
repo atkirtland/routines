@@ -104,13 +104,10 @@
 
   function validateRegistry(raw) {
     const errors = [], projects = raw?.projects || {}, codes = Object.keys(projects);
-    const codeSet = new Set(codes), aliases = new Map(), orders = new Map();
+    const codeSet = new Set(codes), aliases = new Map();
     for (const code of codes) {
       const p = projects[code] || {};
       if (graphemes(code).length !== 1) errors.push(`Project code '${code}' must be one grapheme for compact notation`);
-      if (!Number.isFinite(p.order)) errors.push(`Project '${code}' has no numeric order`);
-      else if (orders.has(p.order)) errors.push(`Projects '${orders.get(p.order)}' and '${code}' share order ${p.order}`);
-      else orders.set(p.order, code);
       for (const parent of p.parents || []) if (!codeSet.has(parent)) errors.push(`Project '${code}' has unknown parent '${parent}'`);
       for (const alias of p.aliases || []) {
         if (codeSet.has(alias) || aliases.has(alias)) errors.push(`Alias '${alias}' is duplicated or shadows a code`);
@@ -153,7 +150,8 @@
       const hits = [...g].filter(x => ancestors(c).has(x));
       if (hits.length > 1) errors.push(`Project '${c}' implies mutually exclusive codes: ${hits.join(", ")}`);
     }
-    return errors.length ? { ok: false, errors } : { ok: true, errors: [], raw, projects, codes: codeSet, aliases, canonical, ancestors, exclusive };
+    const projectOrder = new Map(codes.map((code, index) => [code, index]));
+    return errors.length ? { ok: false, errors } : { ok: true, errors: [], raw, projects, projectOrder, codes: codeSet, aliases, canonical, ancestors, exclusive };
   }
 
   function toDNF(node, reg, flags = { unknown: false }) {
@@ -201,7 +199,7 @@
     const style = requestedStyle === "preserve"
       ? expressionStyle(source, reg.raw?.settings?.["new-scope-style"] || "compact")
       : requestedStyle;
-    const order = code => reg.projects[reg.canonical(code)]?.order ?? Number.MAX_SAFE_INTEGER;
+    const order = code => reg.projectOrder.get(reg.canonical(code)) ?? Number.MAX_SAFE_INTEGER;
     const render = (node, parent = null) => {
       if (node.type === "true") return "true";
       if (node.type === "code") return reg.codes.has(reg.canonical(node.code)) ? reg.canonical(node.code) : node.code;
