@@ -118,6 +118,9 @@ try {
     }, !undo || Date.now() > undo.expires));
     if (!file) { root.createEl("div", { text: "Today’s Daily Note does not exist. Starting a block will create it.", cls: "sb-muted" }); return; }
     let text = await app.vault.read(file);
+    const repairedActual = SB.ensureActualIds(text);
+    if (repairedActual.errors.length) { repairedActual.errors.forEach(message => root.createEl("div", { text: message, cls: "sb-error" })); return; }
+    if (repairedActual.changed) { await write(text, repairedActual.text); new Notice(`Assigned ${repairedActual.assigned.length} Actual Block ID${repairedActual.assigned.length === 1 ? "" : "s"}`); return; }
     const repaired = SB.ensurePlanIds(text);
     if (repaired.errors.length) { repaired.errors.forEach(message => root.createEl("div", { text: message, cls: "sb-error" })); return; }
     if (repaired.changed) { await write(text, repaired.text); new Notice(`Assigned ${repaired.assigned.length} Scheduled Block ID${repaired.assigned.length === 1 ? "" : "s"}`); return; }
@@ -187,7 +190,7 @@ try {
     const tools = root.createEl("div", { cls: "sb-row" });
     tools.appendChild(button("New context", async () => {
       const body = await textPicker("Unplanned context description"); if (!body) return;
-      const id = `a-context-${Date.now().toString(36)}`;
+      const id = SB.randomBlockId("a", text);
       await write(text, SB.appendActual(text, `- ${SB.hhmm(new Date())}- ${body} ^${id}`));
     }));
   }

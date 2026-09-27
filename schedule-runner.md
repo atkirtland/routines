@@ -17,7 +17,7 @@ const config = {
     },
     "exclusive-groups": [],
     settings: {
-      "warning-level": "conflicts-and-unconfirmed",
+      "warning-level": "conflicts-only",
       "undo-seconds": 10,
       "new-scope-style": "compact",
     },

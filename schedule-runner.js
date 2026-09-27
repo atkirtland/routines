@@ -223,9 +223,10 @@
   }
 
   const TIME = "(?:[01]\\d|2[0-3])[0-5]\\d";
-  const MAIN_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})(?:\\s+\\+(\\d+)([mh]))?\\s+(.+?)(?:\\s+\\^([\\w-]+))?\\s*$`, "u");
-  const CONTEXT_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})-(${TIME})?\\s+(.+?)(?:\\s+\\^([\\w-]+))?\\s*$`, "u");
-  const BOUNDARY_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})\\s+—(?:\\s+\\^([\\w-]+))?\\s*$`, "u");
+  const BLOCK_ID = "[\\p{L}\\p{N}_-]+";
+  const MAIN_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})(?:\\s+\\+(\\d+)([mh]))?\\s+(.+?)(?:\\s+\\^(${BLOCK_ID}))?\\s*$`, "u");
+  const CONTEXT_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})-(${TIME})?\\s+(.+?)(?:\\s+\\^(${BLOCK_ID}))?\\s*$`, "u");
+  const BOUNDARY_RE = new RegExp(`^(\\s*)[-*+]\\s+(${TIME})\\s+—(?:\\s+\\^(${BLOCK_ID}))?\\s*$`, "u");
   const heading = (lines, name) => lines.findIndex(x => new RegExp(`^##\\s+${name}\\s*$`, "i").test(x));
   const indentOf = s => s.replace(/\t/g, "    ").length;
   function sectionEnd(lines, start) { let i = start + 1; while (i < lines.length && !/^#{1,2}\s/.test(lines[i])) i++; return i; }
@@ -252,7 +253,7 @@
     return { lines, start, end, entries };
   }
   function allBlockIds(text) {
-    const ids = [], re = /(?:^|\s)\^([\w-]+)\s*$/u;
+    const ids = [], re = /(?:^|\s)\^([\p{L}\p{N}_-]+)\s*$/u;
     String(text).split(/\r?\n/).forEach((line, index) => { const m = line.match(re); if (m) ids.push({ id: m[1], line: index }); });
     return ids;
   }
@@ -261,27 +262,73 @@
     while (used.has(id)) id = `${base}-${n++}`;
     used.add(id); return id;
   }
+  function randomToken(length = 10) {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = new Uint8Array(length);
+    if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    return Array.from(bytes, value => alphabet[value % alphabet.length]).join("");
+  }
+  function randomUniqueId(prefix, used, suffix = "") {
+    let id;
+    do id = `${prefix}-${randomToken()}${suffix}`; while (used.has(id));
+    used.add(id);
+    return id;
+  }
+  function randomBlockId(prefix, text = "", suffix = "") {
+    const used = new Set(allBlockIds(text).map(x => x.id));
+    return randomUniqueId(prefix, used, suffix);
+  }
   function ensurePlanIds(text) {
     const section = parseSection(text, "Plan");
     if (section.start < 0) return { text: String(text), changed: false, assigned: [], errors: [] };
     const ids = allBlockIds(text), errors = [];
     const counts = new Map();
-    for (const x of ids) counts.set(x.id, (counts.get(x.id) || 0) + 1);
+    for (const entry of section.entries) if (entry.id) counts.set(entry.id, (counts.get(entry.id) || 0) + 1);
     for (const [id, count] of counts) if (count > 1) errors.push(`Duplicate block ID '^${id}'`);
     if (errors.length) return { text: String(text), changed: false, assigned: [], errors };
     const used = new Set(ids.map(x => x.id)), lines = section.lines.slice(), assigned = [];
-    let previousMain = null;
     for (const entry of section.entries) {
-      if (entry.role === "main") previousMain = entry;
       if (entry.id) continue;
-      let stem;
-      if (entry.role === "boundary") stem = `${slug(previousMain?.id || previousMain?.body || "boundary")}-end`;
-      else stem = slug(entry.body.replace(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, "$2$1"));
-      const id = uniqueId(`p-${stem}`, used);
+      const id = randomUniqueId("p", used);
       lines[entry.line] = `${lines[entry.line].replace(/\s+$/, "")} ^${id}`;
+      entry.id = id;
       assigned.push({ line: entry.line, id, role: entry.role });
     }
     return { text: lines.join("\n"), changed: assigned.length > 0, assigned, errors: [] };
+  }
+  function ensureActualIds(text) {
+    const original = String(text), section = parseSection(original, "Actual");
+    if (section.start < 0) return { text: original, changed: false, assigned: [], errors: [] };
+    const ids = allBlockIds(original);
+    // `^null-end` was emitted by an older End implementation. Treat it as a
+    // missing boundary ID so duplicate legacy values can repair themselves.
+    const used = new Set(ids.filter(x => x.id !== "null-end").map(x => x.id));
+    const lines = section.lines.slice(), assigned = [];
+    const activeMain = [];
+    for (const entry of section.entries) {
+      const endingMain = entry.role === "boundary"
+        ? [...activeMain].reverse().find(main => main.indent === entry.indent)
+        : null;
+      if (entry.role === "main" || entry.role === "boundary")
+        while (activeMain.length && activeMain.at(-1).indent >= entry.indent) activeMain.pop();
+      const legacyNullEnd = entry.role === "boundary" && entry.id === "null-end";
+      if (!entry.id || legacyNullEnd) {
+        const id = entry.role === "boundary"
+          ? uniqueId(`${endingMain?.id || "a-boundary"}-end`, used)
+          : randomUniqueId("a", used, "-1");
+        const sourceLine = legacyNullEnd ? lines[entry.line].replace(/\s+\^null-end\s*$/, "") : lines[entry.line].replace(/\s+$/, "");
+        lines[entry.line] = `${sourceLine} ^${id}`;
+        entry.id = id;
+        assigned.push({ line: entry.line, id, role: entry.role });
+      }
+      if (entry.role === "main") activeMain.push(entry);
+    }
+    const repairedText = lines.join("\n"), counts = new Map(), errors = [];
+    for (const entry of parseSection(repairedText, "Actual").entries)
+      if (entry.id) counts.set(entry.id, (counts.get(entry.id) || 0) + 1);
+    for (const [id, count] of counts) if (count > 1) errors.push(`Duplicate block ID '^${id}'`);
+    return { text: repairedText, changed: assigned.length > 0, assigned, errors };
   }
   function actualState(text) {
     const s = parseSection(text, "Actual"), activeMain = [], contexts = [];
@@ -319,7 +366,7 @@
     return `${base.replace(/\s*$/, "")}\n${line}\n`;
   }
   function dismissedPlanIds(text) {
-    return new Set([...String(text).matchAll(/%%\s*scheduled-block-dismissed:\s*([\w-]+)\s*%%/gu)].map(m => m[1]));
+    return new Set([...String(text).matchAll(/%%\s*scheduled-block-dismissed:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
   }
   function dismissBlock(text, plan) {
     if (!plan?.id) throw new Error("Planned blocks need a block ID");
@@ -327,7 +374,7 @@
     return appendActual(text, `%% scheduled-block-dismissed: ${plan.id} %%`);
   }
   function taskBlockId(body) {
-    return String(body || "").match(/\[\[[^\]]*#\^([\w-]+)(?:\|[^\]]+)?\]\]/u)?.[1] || null;
+    return String(body || "").match(/\[\[[^\]]*#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/u)?.[1] || null;
   }
   function doneTaskActuals(text, canonicalId, now = new Date()) {
     let result = String(text), state = actualState(result);
@@ -363,6 +410,7 @@
   }
   function endBlock(text, actual, now = new Date(), mode = "end") {
     const time = hhmm(now), state = actualState(text);
+    if (!actual?.id) throw new Error("Actual blocks need a block ID; reopen Schedule Runner to assign one automatically");
     if (actual.role === "main") {
       if (state.mainLeaf?.line !== actual.line) throw new Error("A main parent cannot end while a descendant is active");
       let result = appendActual(text, `${" ".repeat(actual.indent)}- ${time} — ^${actual.id}-end`);
@@ -380,8 +428,8 @@
     return result;
   }
   function completedPlanSlugs(text) {
-    const source = String(text), completed = new Set([...source.matchAll(/%%\s*scheduled-block-ended:\s*([\w-]+)\s*%%/gu)].map(m => m[1]));
-    const paused = new Set([...source.matchAll(/%%\s*scheduled-block-paused:\s*([\w-]+)\s*%%/gu)].map(m => m[1]));
+    const source = String(text), completed = new Set([...source.matchAll(/%%\s*scheduled-block-ended:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
+    const paused = new Set([...source.matchAll(/%%\s*scheduled-block-paused:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
     // Before End/Pause had distinct markers, a main boundary represented End.
     for (const match of source.matchAll(/\^((a-(.+)-\d+))-end\s*$/gmu)) if (!paused.has(match[1])) completed.add(match[3]);
     return completed;
@@ -465,7 +513,7 @@
   }
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
-  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, ensurePlanIds,
+  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
     actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

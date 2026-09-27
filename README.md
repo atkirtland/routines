@@ -30,7 +30,9 @@ All timestamps and the reusable time editor use UTC. Start times and completed c
 
 The runner enforces one active main ancestor-to-leaf chain. A Start click on a nested main block records its missing ancestors in the same write. Starting a different main leaf is disabled until the active leaf is explicitly ended. A parent cannot end with an active descendant. Contexts are independent and may overlap the main chain and one another. Pause closes the current occurrence and Resume creates another. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done.
 
-Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs are assigned in one guarded write; existing IDs are preserved, generated collisions are suffixed, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<plan-id>-<occurrence>`. The runner can also create running, unplanned contexts with standalone Actual IDs.
+Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs receive random ASCII-only IDs in one guarded write; existing IDs are preserved, generated collisions are avoided, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<random-plan-token>-<occurrence>`. The runner can also create running, unplanned contexts with standalone random ASCII IDs.
+
+Existing or manually entered Actual lines without IDs are repaired on render as well. This keeps state reconstruction safe and prevents generated boundary IDs such as `^null-end`.
 
 ## Classification expressions
 
