@@ -147,5 +147,8 @@ assert.throws(() => S.doneTaskActuals(descendant, "eat"), /active descendant/);
 let pausedMain = S.startBlock(`## Plan\n- 0900 Focus ^p-focus\n`, S.parseSection(`## Plan\n- 0900 Focus ^p-focus\n`, "Plan").entries[0], new Date("2026-09-27T09:00:00Z"));
 pausedMain = S.endBlock(pausedMain, S.actualState(pausedMain).mainLeaf, new Date("2026-09-27T09:10:00Z"), "pause");
 assert.equal(S.completedPlanSlugs(pausedMain).has("focus"), false);
+assert.equal(S.cleanTaskText("- [ ] Eat fish ^961371"), "Eat fish");
+assert.equal(S.cleanTaskText("  - [x] 中文任务 #t/p ^任務-1"), "中文任务 #t/p");
+assert.equal(S.cleanTaskText("- Plain list item"), "Plain list item");
 
 console.log("schedule-runner: all tests passed");

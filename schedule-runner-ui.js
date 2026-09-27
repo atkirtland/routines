@@ -22,7 +22,7 @@ try {
   const root = dv.container;
   root.empty(); root.addClass("sb-root");
   const style = document.createElement("style");
-  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}`;
+  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}`;
   root.appendChild(style);
 
   const button = (label, fn, disabled = false) => { const b = document.createElement("button"); b.textContent = label; b.disabled = disabled; b.onclick = fn; return b; };
@@ -61,15 +61,22 @@ try {
     try { await write(text, SB.editActualTime(text, entry.line, edge, value)); } catch (x) { new Notice(x.message); }
   };
   const actualPlanSlug = entry => entry.id?.match(/^a-(.+)-\d+$/)?.[1] || null;
+  const displayBody = (body, evidence) => evidence?.displayText
+    ? String(body).replace(/\[\[[^\]]+\]\]/u, evidence.displayText)
+    : body;
+  const addBodyLabel = (row, body, evidence) => {
+    if (evidence?.isTask) row.createEl("span", { text: "TASK", cls: "sb-task-badge" });
+    row.createEl("strong", { text: displayBody(body, evidence) || "Main boundary" });
+  };
   const taskEvidence = async body => {
-    const match = String(body).match(/\[\[([^\]|#]+)(?:#\^([\w-]+))?(?:\|[^\]]+)?\]\]/u);
+    const match = String(body).match(/\[\[([^\]|#]+)(?:#\^([\p{L}\p{N}_-]+))?(?:\|[^\]]+)?\]\]/u);
     if (!match) return null;
     const target = app.metadataCache.getFirstLinkpathDest(match[1], dailyPath); if (!target) return { source: true, label: "linked task not found" };
     const taskText = await app.vault.read(target), taskLines = taskText.split(/\r?\n/);
     const lineIndex = match[2] ? taskLines.findIndex(x => x.match(new RegExp(`\\^${match[2]}\\s*$`))) : -1;
     const line = lineIndex >= 0 ? taskLines[lineIndex] : "";
     const pageProject = app.metadataCache.getFileCache(target)?.frontmatter?.project || null;
-    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, target, taskText, line, lineIndex, blockId: match[2], completed: /- \[[xX]\]/.test(line) };
+    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask: /^\s*[-*+]\s+\[[ xX]\]/.test(line), completed: /^\s*[-*+]\s+\[[xX]\]/.test(line) };
   };
   const completeTask = async (dailyText, evidence) => {
     if (!evidence.blockId || evidence.lineIndex < 0 || !/- \[ \]/.test(evidence.line)) return new Notice("Linked canonical task is not an incomplete checkbox");
@@ -130,7 +137,8 @@ try {
       root.createEl("h3", { text: "Active" });
       for (const e of [...state.mainChain, ...state.contexts]) {
         const card = root.createEl("div", { cls: "sb-card sb-active" });
-        const row = card.createEl("div", { cls: "sb-row" }); row.createEl("strong", { text: e.body || "Main boundary" });
+        const evidence = await taskEvidence(e.body);
+        const row = card.createEl("div", { cls: "sb-row" }); addBodyLabel(row, e.body, evidence);
         const time = row.createEl("button", { text: e.role === "context" ? `${e.start}-` : e.start }); time.onclick = () => editTime(text, e);
         if (e.role === "context" && e.end) { const end = row.createEl("button", { text: e.end }); end.onclick = () => editTime(text, e, "end"); }
         const stop = mode => async () => { try { await write(text, SB.endBlock(text, e, new Date(), mode)); } catch (x) { new Notice(x.message); } };
@@ -161,8 +169,8 @@ try {
     for (const e of plan.entries.filter(x => x.role !== "boundary" && !dismissed.has(x.id) && !completed.has(x.id?.replace(/^p-/, "")))) {
       const card = root.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
       const row = card.createEl("div", { cls: "sb-row" });
-      row.createEl("strong", { text: e.body }); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
       const requirement = SB.inheritedRequirement(e, registry), evidence = await taskEvidence(e.body);
+      addBodyLabel(row, e.body, evidence); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
       if (evidence) {
         const result = SB.classify(evidence.source, requirement, registry);
         if (SB.shouldShowClassification(result.state, rawRegistry.settings?.["warning-level"]))

@@ -511,9 +511,15 @@
     const matches = [...String(taskText).matchAll(/#t\/([^\s#]+)/gu)].map(m => m[1]);
     return matches.length ? matches.map(x => `(${x})`).join("/") : null;
   }
+  function cleanTaskText(line) {
+    return String(line || "")
+      .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s*)?/, "")
+      .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "")
+      .trim();
+  }
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
   return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
     actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
-    replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
+    replaceIfUnchanged, inlineClassifications, cleanTaskText, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });
