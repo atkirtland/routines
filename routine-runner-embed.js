@@ -35,11 +35,13 @@
   function installStyles(doc = document) {
     const stale = doc.getElementById("routine-runner-shared-selection-style");
     if (stale) stale.remove();
-    if (doc.getElementById(SHARED_STYLE_ID)) return;
-    const style = doc.createElement("style");
-    style.id = SHARED_STYLE_ID;
+    let style = doc.getElementById(SHARED_STYLE_ID);
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = SHARED_STYLE_ID;
+      doc.head.appendChild(style);
+    }
     style.textContent = SHARED_CSS;
-    doc.head.appendChild(style);
   }
 
   function model(content, rootLine, focusLine = rootLine, defaultEstimateMs) {
@@ -176,6 +178,15 @@
     }
     tasks.forEach(node => visit(node, true));
     return leaves;
+  }
+
+  // Standalone supplies an open-task tree to the shared selector. Scheduled
+  // roots need the same pruning before they reach that selector.
+  function openSelectionTree(node) {
+    if (!node || node.checked) return null;
+    const children = node.children.map(openSelectionTree).filter(Boolean);
+    if (node.children.length && !children.length) return null;
+    return { ...node, children };
   }
 
   // The setup tree is deliberately host-agnostic. Standalone supplies the
@@ -519,7 +530,8 @@
       sortTree(current.root.children);
       current.root.selected = state.enabled[keyOf(current.root)] !== false;
       core.flatten(current.root.children).forEach(node => { node.selected = state.enabled[keyOf(node)] !== false; });
-      const selectionTasks = [current.root];
+      const selectionRoot = openSelectionTree(current.root);
+      const selectionTasks = selectionRoot ? [selectionRoot] : [];
       const syncSelection = () => {
         const ordered = core.flatten(selectionTasks);
         ordered.forEach(node => { state.enabled[keyOf(node)] = node.selected !== false; });
@@ -536,6 +548,11 @@
       start.addEventListener("click", () => {
         syncSelection();
         state.retired = leaves.filter(node => !state.selected.includes(keyOf(node))).map(keyOf);
+        // Starting from the selection screen begins a new run. Do not inherit
+        // paused clocks left by a prior run that was stopped back to selection.
+        state.sessions = {};
+        state.focusKey = null;
+        state.activeLeafKey = null;
         state.totalLeafCount = selectedCount;
         state.processedCount = 0; state.completedCount = 0; state.summary = null;
         state.screen = "run"; notify();
@@ -558,7 +575,10 @@
       if (!state.summary) state.summary = { elapsedMs: sessionElapsedTotal(state), processedCount: state.processedCount || 0, completedCount: state.completedCount || 0, totalLeafCount: state.totalLeafCount || 0 };
       state.screen = "summary"; notify();
       container.empty?.();
-      renderSummary(container, state.summary);
+      renderSummary(container, state.summary, {
+        actionLabel: options.summaryActionLabel,
+        onAction: options.onSummaryAction,
+      });
       options.onFinish?.(state.summary);
       return { model: current, state, dispose() {} };
     }
@@ -566,7 +586,7 @@
   }
 
   return { model, replacementForTask, completeTask, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
-    createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves,
+    createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, installStyles,
     lineForKey, renderRunner, renderSession };
 });

@@ -60,6 +60,13 @@ assert.deepEqual(embedded.path.map(task => task.display), ["Morning routine", "B
 assert.deepEqual(embedded.leaves.map(task => task.display), ["Make bed", "Eat fruit"]);
 assert.equal(embedded.hasIncompleteDescendants, true);
 assert.equal(E.model("- [ ] Root\n  - [ ] Child\n", 0, 99).focus.display, "Root");
+assert.deepEqual(
+  E.openSelectionTree({ display: "Root", checked: false, children: [
+    { display: "記錄夢 🏁 0:07 ✅ 2026-09-27", checked: true, children: [] },
+    { display: "Open", checked: false, children: [] },
+  ] }).children.map(task => task.display),
+  ["Open"]
+);
 assert.equal(E.replacementForTask("  - [ ] Child", null), "  - [x] Child");
 assert.equal(E.replacementForTask("- [ ] Child", "- [x] Child ✅ 2026-09-27"), "- [x] Child ✅ 2026-09-27");
 assert.deepEqual(E.createRunState(), { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0 });

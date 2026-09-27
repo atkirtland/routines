@@ -86,35 +86,36 @@ try {
     const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
     return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
-  const embeddedRuns = window.__scheduleRunnerRoutineRuns ?? (window.__scheduleRunnerRoutineRuns = { states: {}, disposers: [], actionTail: Promise.resolve(), loaded: false, saveTimer: null });
-  // Dataview preserves this global across script reloads. Upgrade objects made
-  // by older runner versions instead of assuming every coordinator field exists.
-  if (!embeddedRuns.states || typeof embeddedRuns.states !== "object") embeddedRuns.states = {};
-  if (!Array.isArray(embeddedRuns.disposers)) embeddedRuns.disposers = [];
-  if (!embeddedRuns.actionTail || typeof embeddedRuns.actionTail.then !== "function") embeddedRuns.actionTail = Promise.resolve();
+  // Only write coordination and view cleanup survive a Dataview re-execution.
+  // Routine session data is rehydrated from schedule-runner-state.yaml below.
+  const embeddedCoordinator = window.__scheduleRunnerRoutineCoordinator ?? (window.__scheduleRunnerRoutineCoordinator = { disposers: [], actionTail: Promise.resolve(), saveTimer: null });
+  if (!Array.isArray(embeddedCoordinator.disposers)) embeddedCoordinator.disposers = [];
+  if (!embeddedCoordinator.actionTail || typeof embeddedCoordinator.actionTail.then !== "function") embeddedCoordinator.actionTail = Promise.resolve();
+  clearTimeout(embeddedCoordinator.saveTimer); embeddedCoordinator.saveTimer = null;
+  embeddedCoordinator.disposers.splice(0).forEach(dispose => dispose());
+  const embeddedRuns = { states: {}, legacy: {} };
   const enqueueEmbedded = action => {
-    const prior = embeddedRuns.actionTail && typeof embeddedRuns.actionTail.then === "function"
-      ? embeddedRuns.actionTail
+    const prior = embeddedCoordinator.actionTail && typeof embeddedCoordinator.actionTail.then === "function"
+      ? embeddedCoordinator.actionTail
       : Promise.resolve();
-    embeddedRuns.actionTail = prior.catch(() => {}).then(action);
-    return embeddedRuns.actionTail;
+    embeddedCoordinator.actionTail = prior.catch(() => {}).then(action);
+    return embeddedCoordinator.actionTail;
   };
-  if (!embeddedRuns.loaded) {
-    const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
-    if (stateFile) {
-      try {
-        const saved = JSON.parse(await app.vault.read(stateFile));
-        if (saved["schedule-runner-state-version"] === 2 && saved.sessions && typeof saved.sessions === "object") {
-          embeddedRuns.states = Object.fromEntries(Object.entries(saved.sessions).map(([key, value]) => [key, RRE.deserializeSession(value)]));
-          embeddedRuns.legacy = saved.legacy || {};
-        } else if (saved["schedule-runner-state-version"] === 1 && saved.routines && typeof saved.routines === "object") {
-          // Migration is completed lazily when a canonical link is seen on an
-          // active Plan block; unmatched records remain visible and preserved.
-          embeddedRuns.legacy = saved.routines;
-        }
-      } catch (error) { new Notice(`Schedule runner state was not loaded: ${error.message}`); }
+  const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
+  if (stateFile) {
+    try {
+      const saved = JSON.parse(await app.vault.read(stateFile));
+      if (saved["schedule-runner-state-version"] === 2 && saved.sessions && typeof saved.sessions === "object") {
+        embeddedRuns.states = Object.fromEntries(Object.entries(saved.sessions).map(([key, value]) => [key, RRE.deserializeSession(value)]));
+        embeddedRuns.legacy = saved.legacy || {};
+      } else if (saved["schedule-runner-state-version"] === 1 && saved.routines && typeof saved.routines === "object") {
+        // Migration is completed lazily when a canonical link is seen on an
+        // active Plan block; unmatched records remain visible and preserved.
+        embeddedRuns.legacy = saved.routines;
+      }
+    } catch (error) {
+      new Notice(`Schedule runner state was not loaded: ${error.message}`);
     }
-    embeddedRuns.loaded = true;
   }
   const embeddedStateSnapshot = () => `${JSON.stringify({ "schedule-runner-state-version": 2,
     sessions: Object.fromEntries(Object.entries(embeddedRuns.states).map(([key, value]) => [key, RRE.serializeSession(value)])),
@@ -125,8 +126,8 @@ try {
       const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
       if (stateFile) await app.vault.modify(stateFile, snapshot); else await app.vault.create(STATE_PATH, snapshot);
     });
-    embeddedRuns.actionTail = write.catch(error => new Notice(`Schedule runner state was not saved: ${error.message}`));
-    return embeddedRuns.actionTail;
+    embeddedCoordinator.actionTail = write.catch(error => new Notice(`Schedule runner state was not saved: ${error.message}`));
+    return embeddedCoordinator.actionTail;
   };
   const ensureEmbeddedState = async () => {
     if (app.vault.getAbstractFileByPath(STATE_PATH)) return;
@@ -137,12 +138,11 @@ try {
     }
   };
   const saveEmbeddedState = () => {
-    clearTimeout(embeddedRuns.saveTimer);
-    embeddedRuns.saveTimer = setTimeout(() => {
+    clearTimeout(embeddedCoordinator.saveTimer);
+    embeddedCoordinator.saveTimer = setTimeout(() => {
       writeEmbeddedState(embeddedStateSnapshot());
     }, 250);
   };
-  embeddedRuns.disposers.splice(0).forEach(dispose => dispose());
   const addEmbeddedRoutine = async (card, evidence, sessionKey) => {
     if (!evidence?.isTask || evidence.lineIndex < 0) return;
     await ensureEmbeddedState();
@@ -154,13 +154,33 @@ try {
       embeddedRuns.states[sessionKey] = RRE.deserializeSession(embeddedRuns.legacy[canonicalKey]);
       delete embeddedRuns.legacy[canonicalKey]; saveEmbeddedState();
     }
-    const runState = embeddedRuns.states[sessionKey] ?? (embeddedRuns.states[sessionKey] = RRE.createRunState());
+    const runState = embeddedRuns.states[sessionKey] ?? (embeddedRuns.states[sessionKey] = { ...RRE.createRunState(), screen: "ready" });
+    const resetRunState = screen => {
+      const fresh = RRE.createRunState();
+      Object.keys(runState).forEach(key => delete runState[key]);
+      Object.assign(runState, fresh, { screen });
+    };
+    if (runState.screen === "ready") {
+      const begin = host.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Begin tasks" });
+      begin.addEventListener("click", () => {
+        resetRunState("select");
+        saveEmbeddedState();
+        enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`));
+      });
+      return;
+    }
     // renderSession owns selection, execution (via its shared renderRunner), and summary.
     const view = RRE.renderSession(host, {
       app, content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
       sourcePath: evidence.target.path, rootBlockId: evidence.blockId,
       onStateChange: saveEmbeddedState,
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
+      summaryActionLabel: "Back to task block",
+      onSummaryAction: () => {
+        resetRunState("ready");
+        saveEmbeddedState();
+        enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`));
+      },
       onComplete: async (line, result, status) => {
         const completion = enqueueEmbedded(async () => {
           const current = await app.vault.read(evidence.target);
@@ -171,11 +191,11 @@ try {
           await RRE.completeTask(app, evidence.target, current, currentLine, status, result);
           await render();
         });
-        embeddedRuns.actionTail = completion.catch(error => { new Notice(`Task completion failed: ${error.message}`); });
-        await embeddedRuns.actionTail;
+        embeddedCoordinator.actionTail = completion.catch(error => { new Notice(`Task completion failed: ${error.message}`); });
+        await embeddedCoordinator.actionTail;
       },
     });
-    embeddedRuns.disposers.push(view.dispose);
+    embeddedCoordinator.disposers.push(view.dispose);
   };
   const completeTask = async (_dailyText, evidence) => {
     if (!evidence.blockId || evidence.lineIndex < 0 || !/- \[ \]/.test(evidence.line)) return new Notice("Linked canonical task is not an incomplete checkbox");
@@ -187,7 +207,7 @@ try {
   };
 
   async function render() {
-    embeddedRuns.disposers.splice(0).forEach(dispose => dispose());
+    embeddedCoordinator.disposers.splice(0).forEach(dispose => dispose());
     [...root.children].filter(x => x !== style).forEach(x => x.remove());
     const title = root.createEl("div", { cls: "sb-row" });
     title.createEl("strong", { text: `UTC · ${dailyPath}` });
@@ -303,6 +323,7 @@ try {
       if (missed) row.appendChild(button("Dismiss", async () => { try { await write(text, SB.dismissBlock(text, e)); } catch (x) { new Notice(x.message); } }));
       const scheduledProgress = e.role === "context" && e.end ? SB.progressFor(e, null, new Date()) : null;
       if (scheduledProgress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${scheduledProgress.percent}%`; }
+      if (evidence?.isTask && evidence.lineIndex >= 0 && !active) await addEmbeddedRoutine(card, evidence, e.id);
     }
     const tools = root.createEl("div", { cls: "sb-row" });
     tools.appendChild(button("New context", async () => {
