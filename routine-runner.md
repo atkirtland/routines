@@ -107,6 +107,7 @@ style.textContent = `
     .rr-pick-item:hover { background:var(--background-modifier-hover); }
     .rr-pick-item-active { background:var(--background-modifier-hover); font-weight:600; }
     .rr-section-list { max-height:180px; }
+    .rr-section-label { margin-inline-start:calc(var(--rr-section-depth, 0) * 0.625em); }
     .rr-pick-path { color:var(--text-faint); font-size:0.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rr-empty { color:var(--text-muted); padding:8px 0; }
     .rr-error { color:var(--color-red, #e5534b); padding:8px 10px; margin-bottom:0.75em; border:1px solid var(--color-red, #e5534b); border-radius:6px; }
@@ -987,7 +988,8 @@ function renderSectionCombo() {
     matches.forEach((o) => {
       const item = list.createDiv({ cls: "rr-pick-item" });
       if (o.idx === state.sectionIdx) item.addClass("rr-pick-item-active");
-      item.createSpan({ text: (o.level ? "  ".repeat(o.level - 1) : "") + o.text });
+      const label = item.createSpan({ cls: "rr-section-label", text: o.text });
+      label.style.setProperty("--rr-section-depth", String(o.level ? o.level - 1 : 0));
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
         list.style.display = "none";
