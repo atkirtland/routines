@@ -49,8 +49,14 @@ assert(!scheduleSource.includes("function render("), "Schedule Runner UI leaked 
 new Function(fs.readFileSync(path.join(root, "schedule-runner-ui.js"), "utf8"));
 assert.match(fs.readFileSync(path.join(root, "schedule-runner-ui.js"), "utf8"), /schedule-runner\.js/);
 const routineSource = compileDataview("routine-runner.md");
-assert.match(routineSource, /⏱️/u);
-assert.match(routineSource, /🏁/u);
+assert.match(routineSource, /routine-runner-ui\.js/);
+assert(!routineSource.includes("function render("), "Routine Runner UI leaked into its Markdown entry point");
+const routineUi = fs.readFileSync(path.join(root, "routine-runner-ui.js"), "utf8");
+new Function(routineUi);
+assert.match(routineUi, /routine-runner\.js/);
+assert.match(routineUi, /🏁/u);
+const routineCore = fs.readFileSync(path.join(root, "routine-runner.js"), "utf8");
+assert.match(routineCore, /⏱️/u);
 
 // The browser build installs only its namespaced API when evaluated fresh.
 const browser = { globalThis: {} };

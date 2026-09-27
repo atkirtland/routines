@@ -4,7 +4,7 @@ See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the feature ledger 
 
 This directory contains two deliberately separate runners:
 
-- `routine-runner.md` is the existing checkbox routine/countdown runner. Schedule Runner does not load, edit, or share state with it.
+- `routine-runner.md` is the thin configuration/entry note for the checkbox routine/countdown runner. Its Obsidian adapter is `routine-runner-ui.js`, and its testable parsing, tree, timing, and formatting logic is `routine-runner.js`. Schedule Runner does not load, edit, or share state with it.
 - `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`.
 
 All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
@@ -66,6 +66,7 @@ The pure core in `schedule-runner.js` exposes parsing, registry validation, thre
 ```sh
 node tests/schedule-runner.test.js
 node tests/schedule-runner.integration.test.js
+node tests/routine-runner.test.js
 ```
 
 Done is separate from End. Done closes running occurrences linked to the canonical task, refuses to run while an affected main block has an active unrelated descendant, and then checks the linked Markdown task. A failed cross-file checkbox write rolls the Daily Note back; guarded Undo verifies and restores both files. This does not yet invoke Tasks-plugin recurrence or custom-status semantics.
