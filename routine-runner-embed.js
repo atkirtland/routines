@@ -14,6 +14,7 @@
   const SHARED_STYLE_ID = "routine-runner-shared-style";
   const SHARED_CSS = `
     .rr-root,.rr-embedded{font-size:var(--font-text-size)}
+    .rr-cache-tools{display:flex;justify-content:flex-end;margin-bottom:.5em}.rr-purge-btn{color:var(--text-muted)}.rr-purge-btn:hover{color:var(--color-red,#e5534b)}
     .rr-setup-tools{position:sticky;top:0;z-index:2;padding:.55em;margin-bottom:.6em;border:1px solid var(--background-modifier-border);border-radius:6px;background:var(--background-primary);box-shadow:0 2px 8px rgba(0,0,0,.12)}
     .rr-tools-row{display:flex;align-items:center;flex-wrap:wrap;gap:.4em}.rr-tools-row+.rr-tools-row{margin-top:.45em}.rr-tools-row .rr-input{flex:1 1 14em;width:auto;margin:0}
     .rr-input{width:100%;box-sizing:border-box;padding:6px 10px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);margin-bottom:.5em}
@@ -123,6 +124,17 @@
       if (buttonMode) crumb.disabled = current;
       if (!current) crumb.addEventListener("click", () => onFocus?.(node.line, node));
     });
+  }
+
+  function renderPurgeCacheButton(container, options = {}) {
+    const tools = container.createDiv({ cls: "rr-cache-tools" });
+    const button = tools.createEl("button", { cls: "rr-tool-btn rr-purge-btn", text: options.label || "Purge cache" });
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try { await options.onPurge?.(); }
+      catch (error) { button.disabled = false; throw error; }
+    });
+    return button;
   }
 
 
@@ -587,6 +599,6 @@
 
   return { model, replacementForTask, completeTask, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
-    renderSelection, renderRunCard, renderSummary, installStyles,
+    renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
     lineForKey, renderRunner, renderSession };
 });

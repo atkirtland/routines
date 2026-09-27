@@ -376,9 +376,11 @@
     if (dismissedPlanIds(text).has(plan.id)) return text;
     return appendActual(text, `%% scheduled-block-dismissed: ${plan.id} %%`);
   }
-  function taskBlockId(body) {
-    return String(body || "").match(/\[\[[^\]]*#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/u)?.[1] || null;
+  function taskLink(body) {
+    const match = String(body || "").match(/\[\[([^#\]|]*)#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/u);
+    return match ? { path: match[1].trim(), blockId: match[2] } : null;
   }
+  function taskBlockId(body) { return taskLink(body)?.blockId || null; }
   function doneTaskActuals(text, canonicalId, now = new Date()) {
     let result = String(text), state = actualState(result);
     const affectedMain = state.mainChain.map((entry, index) => ({ entry, index })).filter(x => taskBlockId(x.entry.body) === canonicalId);
@@ -417,24 +419,25 @@
     if (actual.role === "main") {
       if (state.mainLeaf?.line !== actual.line) throw new Error("A main parent cannot end while a descendant is active");
       let result = appendActual(text, `${" ".repeat(actual.indent)}- ${time} — ^${actual.id}-end`);
-      const planSlug = actual.id?.match(/^a-(.+)-\d+$/)?.[1];
       if (mode === "pause") result = appendActual(result, `%% scheduled-block-paused: ${actual.id} %%`);
-      else if (planSlug) result = appendActual(result, `%% scheduled-block-ended: ${planSlug} %%`);
       return result;
     }
     const lines = text.split(/\r?\n/), current = lines[actual.line];
     if (!current || actual.end) throw new Error("Context occurrence is not running");
     lines[actual.line] = current.replace(new RegExp(`(${TIME})-`), `$1-${time}`);
-    let result = lines.join("\n"), planSlug = actual.id?.match(/^a-(.+)-\d+$/)?.[1];
+    let result = lines.join("\n");
     if (mode === "pause") result = appendActual(result, `%% scheduled-block-paused: ${actual.id} %%`);
-    else if (planSlug) result = appendActual(result, `%% scheduled-block-ended: ${planSlug} %%`);
     return result;
   }
   function completedPlanSlugs(text) {
     const source = String(text), completed = new Set([...source.matchAll(/%%\s*scheduled-block-ended:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
     const paused = new Set([...source.matchAll(/%%\s*scheduled-block-paused:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
-    // Before End/Pause had distinct markers, a main boundary represented End.
-    for (const match of source.matchAll(/\^((a-(.+)-\d+))-end\s*$/gmu)) if (!paused.has(match[1])) completed.add(match[3]);
+    const state = actualState(source), active = new Set([...state.mainChain, ...state.contexts].map(entry => entry.id));
+    for (const entry of state.section.entries) {
+      if (!entry.id || active.has(entry.id) || paused.has(entry.id)) continue;
+      const planSlug = entry.id.match(/^a-(.+)-\d+$/)?.[1];
+      if (planSlug && (entry.role === "main" || (entry.role === "context" && entry.end))) completed.add(planSlug);
+    }
     return completed;
   }
   function editActualTime(text, entryLine, edge, value) {
@@ -523,6 +526,6 @@
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
   return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
-    actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
+    actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, cleanTaskText, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

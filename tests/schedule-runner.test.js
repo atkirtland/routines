@@ -28,6 +28,9 @@ assert.equal(state("(p,w)運", "運"), "confirmed");
 assert.equal(S.resolveTaskClassification("Do it #t/w #t/運", "p"), "(w)/(運)");
 assert.equal(S.resolveTaskClassification("Do it", "p"), "p");
 assert.equal(S.resolveTaskClassification("Do it", null), true);
+assert.deepEqual(S.taskLink("p [[#^morning]]"), { path: "", blockId: "morning" });
+assert.deepEqual(S.taskLink("p [[Tasks#^morning|Morning]]"), { path: "Tasks", blockId: "morning" });
+assert.equal(S.taskBlockId("p [[#^morning]]"), "morning");
 
 assert.equal(S.validateRegistry({ projects: { a: { parents: ["b"] }, b: { parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
 assert.equal(S.validateRegistry({ projects: { a: { parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
@@ -83,8 +86,17 @@ assert.match(followedStarted, /## Actual\n\n- 0905 Focus \^a-focus-1\n\n## Notes
 assert.doesNotMatch(followedStarted, /## Notes[\s\S]*\^a-focus-1/);
 assert.equal(S.actualState(followedStarted).mainLeaf.body, "Focus");
 const followedEnded = S.endBlock(followedStarted, S.actualState(followedStarted).mainLeaf, new Date("2026-09-27T09:10:00Z"));
-assert.match(followedEnded, /## Actual[\s\S]*- 0910 — \^a-focus-1-end\n%% scheduled-block-ended: focus %%\n\n## Notes/);
+assert.match(followedEnded, /## Actual[\s\S]*- 0910 — \^a-focus-1-end\n\n## Notes/);
+assert.doesNotMatch(followedEnded, /scheduled-block-ended/);
 assert.equal(S.actualState(followedEnded).mainLeaf, null);
+assert.equal(S.completedPlanSlugs(followedEnded).has("focus"), true);
+
+const supersededActual = `## Actual
+- 1400 p [[#^morning]] ^a-sh31tf66ft-1
+- 1655 w ^a-ci5fhwe2xg-1
+`;
+assert.equal(S.completedPlanSlugs(supersededActual).has("sh31tf66ft"), true);
+assert.equal(S.completedPlanSlugs(supersededActual).has("ci5fhwe2xg"), false);
 
 const missingIds = `## Plan\n- 0550 p eat fish\n  - 0600 Task A\n  - 0630 —\n- 0700-0800 coworking\n`;
 const repaired = S.ensurePlanIds(missingIds);

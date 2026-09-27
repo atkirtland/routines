@@ -74,17 +74,21 @@ try {
     row.createEl("strong", { text: displayBody(body, evidence) || "Main boundary" });
   };
   const taskEvidence = async body => {
-    const match = String(body).match(/\[\[([^\]|#]+)(?:#\^([\p{L}\p{N}_-]+))?(?:\|[^\]]+)?\]\]/u);
-    if (!match) return null;
-    const target = app.metadataCache.getFirstLinkpathDest(match[1], dailyPath); if (!target) return { source: true, label: "linked task not found" };
+    const link = SB.taskLink(body);
+    if (!link) return null;
+    // An empty link path is Obsidian's current-note shorthand: [[#^block-id]].
+    const target = link.path
+      ? app.metadataCache.getFirstLinkpathDest(link.path, dailyPath)
+      : file || app.vault.getAbstractFileByPath(dailyPath);
+    if (!target) return { source: true, label: "linked task not found" };
     const taskText = await app.vault.read(target), taskLines = taskText.split(/\r?\n/);
-    const lineIndex = match[2] ? taskLines.findIndex(x => x.match(new RegExp(`\\^${match[2]}\\s*$`))) : -1;
+    const lineIndex = taskLines.findIndex(x => x.match(new RegExp(`\\^${link.blockId}\\s*$`)));
     const line = lineIndex >= 0 ? taskLines[lineIndex] : "";
     const pageProject = app.metadataCache.getFileCache(target)?.frontmatter?.project || null;
     const isTask = /^\s*[-*+]\s+\[[ xX]\]/.test(line);
     const nested = isTask ? RRE.model(taskText, lineIndex) : null;
     const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
-    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
+    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
   // Only write coordination and view cleanup survive a Dataview re-execution.
   // Routine session data is rehydrated from schedule-runner-state.yaml below.
@@ -160,8 +164,17 @@ try {
       Object.keys(runState).forEach(key => delete runState[key]);
       Object.assign(runState, fresh, { screen });
     };
+    RRE.renderPurgeCacheButton(host, {
+      onPurge: async () => {
+        delete embeddedRuns.states[sessionKey];
+        await writeEmbeddedState(embeddedStateSnapshot());
+        new Notice("Scheduled routine cache purged");
+        await enqueueEmbedded(render);
+      },
+    });
+    const sessionHost = host.createDiv({ cls: "rr-session" });
     if (runState.screen === "ready") {
-      const begin = host.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Begin tasks" });
+      const begin = sessionHost.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Begin tasks" });
       begin.addEventListener("click", () => {
         resetRunState("select");
         saveEmbeddedState();
@@ -170,7 +183,7 @@ try {
       return;
     }
     // renderSession owns selection, execution (via its shared renderRunner), and summary.
-    const view = RRE.renderSession(host, {
+    const view = RRE.renderSession(sessionHost, {
       app, content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
       sourcePath: evidence.target.path, rootBlockId: evidence.blockId,
       onStateChange: saveEmbeddedState,

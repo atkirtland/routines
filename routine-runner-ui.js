@@ -564,6 +564,12 @@ function render() {
   refs.sharedDispose?.();
   container.empty();
   refs = {};
+  RRE.renderPurgeCacheButton(container, {
+    onPurge: async () => {
+      await enqueueAction(resetMissingCache);
+      new Notice("Routine Runner cache purged");
+    },
+  });
   if (state.cacheError) container.createDiv({ cls: "rr-error", text: state.cacheError });
   if (coordinator.diagnostics.length) container.createDiv({
     cls: "rr-diagnostic",
