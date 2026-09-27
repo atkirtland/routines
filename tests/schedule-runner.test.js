@@ -1,8 +1,10 @@
 const assert = require("assert");
 const fs = require("fs");
-const S = require("./scheduled-blocks.js");
+const path = require("path");
+const root = path.join(__dirname, "..");
+const S = require(path.join(root, "schedule-runner.js"));
 
-const registryFromDisk = S.parseRegistryYaml(fs.readFileSync(`${__dirname}/projects.yaml`, "utf8"));
+const registryFromDisk = S.parseRegistryYaml(fs.readFileSync(path.join(root, "projects.yaml"), "utf8"));
 assert.equal(registryFromDisk.version, 1);
 assert.deepEqual(registryFromDisk.projects["甲"].parents, ["w"]);
 assert.deepEqual(registryFromDisk["exclusive-groups"], []);
@@ -36,6 +38,8 @@ assert.equal(S.resolveTaskClassification("Do it", null), true);
 assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["b"] }, b: { order: 2, parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
 assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
 assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [], aliases: ["x"] }, b: { order: 2, parents: [], aliases: ["x"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [] } }, "exclusive-groups": [], settings: { "warning-level": "maybe" } }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [] } }, "exclusive-groups": [], settings: { "new-scope-style": "dots" } }).ok, false);
 
 let note = `# Day\n\n## Plan\n\n- 1000 w ^p-work\n  - 1000 +25m Pomodoro ^p-pomo\n    - 1000 Task A ^p-task-a\n    - 1010 — ^p-task-a-end\n- 1030-1130 coworking ^p-cowork\n`;
 const plan = S.parseSection(note, "Plan");
@@ -81,14 +85,32 @@ assert.match(colliding.text, /\^p-same\n/);
 assert.match(colliding.text, /\^p-same-2\n/);
 assert.equal(S.ensurePlanIds(`## Plan\n- 0500 A ^p-x\n- 0600 B ^p-x\n`).errors.length, 1);
 const inherited = S.parseSection(`## Plan\n- 0500 w Parent\n  - 0510 運 Child\n`, "Plan");
-assert.equal(S.inheritedRequirement(inherited.entries[1], reg), "(w)/(運)");
+assert.equal(S.inheritedRequirement(inherited.entries[1], reg), "w運");
+assert.equal(S.formatExpression("運/w/職", reg), "w/運");
+assert.equal(S.formatExpression("運w", reg), "w運");
+assert.equal(S.formatExpression("(運,w)/p", reg), "p/(運,w)");
+assert.equal(S.shouldShowClassification("confirmed", "conflicts-and-unconfirmed"), false);
+assert.equal(S.shouldShowClassification("unconfirmed", "conflicts-and-unconfirmed"), true);
+assert.equal(S.shouldShowClassification("conflict", "conflicts-only"), true);
+assert.equal(S.shouldShowClassification("unconfirmed", "conflicts-only"), false);
 assert.equal(S.scopeToken("eat fish", reg), null);
 assert.deepEqual(S.progressFor({ role: "main", duration: 25 }, { start: "1000" }, new Date("2026-09-27T10:10:00Z")),
   { kind: "relative", start: 600, end: 625, elapsed: 10, duration: 25, percent: 40, overrun: 0 });
 let editNote = `## Actual\n- 1000 Parent ^a-parent-1\n  - 1010 Child ^a-child-1\n- 1030-1100 Context ^a-context-1\n`;
-assert.throws(() => S.editActualTime(editNote, 1, "start", "1015"), /child/);
+assert.throws(() => S.editActualTime(editNote, 1, "start", "1015"), /child/i);
 editNote = S.editActualTime(editNote, 3, "end", "1115");
 assert.match(editNote, /1030-1115/);
+const bounded = `## Actual
+- 1000 Parent ^a-parent-1
+  - 1010 Child ^a-child-1
+  - 1030 — ^a-child-1-end
+- 1100 — ^a-parent-1-end
+`;
+assert.equal(S.validateActualIntervals(bounded).ok, true);
+assert.throws(() => S.editActualTime(bounded, 1, "start", "1035"), /ends before|child/i);
+assert.throws(() => S.editActualTime(bounded, 2, "start", "0955"), /parent/i);
+const outsideParent = bounded.replace("  - 1030 —", "  - 1110 —");
+assert.equal(S.validateActualIntervals(outsideParent).ok, false);
 const donePlan = `## Plan\n- 0900 [[Tasks#^eat|Eat]] ^p-eat\n- 0900-1000 [[Tasks#^eat|Eat]] ^p-eat-context\n`;
 const doneEntries = S.parseSection(donePlan, "Plan").entries;
 let doneActual = S.startBlock(donePlan, doneEntries[0], new Date("2026-09-27T09:00:00Z"));
@@ -103,4 +125,4 @@ let pausedMain = S.startBlock(`## Plan\n- 0900 Focus ^p-focus\n`, S.parseSection
 pausedMain = S.endBlock(pausedMain, S.actualState(pausedMain).mainLeaf, new Date("2026-09-27T09:10:00Z"), "pause");
 assert.equal(S.completedPlanSlugs(pausedMain).has("focus"), false);
 
-console.log("scheduled-blocks: all tests passed");
+console.log("schedule-runner: all tests passed");

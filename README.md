@@ -1,13 +1,13 @@
-# Scheduled Blocks
+# Schedule Runner
 
-> **Implementation status: incomplete prototype.** The files in this directory do not yet implement the complete design. Do not rely on the runner as the finished workflow. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the authoritative feature-by-feature ledger and remaining work.
+See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the feature ledger and verification boundary.
 
 This directory contains two deliberately separate runners:
 
-- `routine-runner.md` is the existing checkbox routine/countdown runner. Scheduled Blocks does not load, edit, or share state with it.
-- `scheduled-block-runner.md` executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section.
+- `routine-runner.md` is the existing checkbox routine/countdown runner. Schedule Runner does not load, edit, or share state with it.
+- `schedule-runner.md` is the thin configuration/entry note. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`.
 
-All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable; full validation against reconstructed parent end intervals and sibling transitions remains outstanding. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
+All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
 
 ## Timeline grammar
 
@@ -45,6 +45,8 @@ Concatenation and `/` are intersection (`p運 = p/運`); comma is union (`w,a`).
 
 Hierarchy is held in `projects.yaml`: `parents` are transitive implication/subset edges, `aliases` preserve renamed codes, `order` defines canonical intersection display order, and `exclusive-groups` alone declare logical conflicts. Validation rejects multi-grapheme/duplicate codes or aliases, missing/duplicate orders, unknown parents or exclusive members, cycles, and projects that imply impossible exclusive combinations.
 
+Scope output uses registry `order`, canonicalizes aliases, and removes duplicate intersection members. Existing slash notation is retained; compact input remains compact. Newly combined scopes use `settings.new-scope-style`. Classification display follows `settings.warning-level` (`all`, `conflicts-and-unconfirmed`, `conflicts-only`, or `none`).
+
 For task evidence `T` and inherited block requirement `B`:
 
 - **Confirmed** means `T ⇒ B`.
@@ -59,10 +61,11 @@ For linked block tasks, the runner loads the canonical task, applies inline-over
 
 The prototype only mutates Markdown after explicit Start, End, start-time edit, or Undo clicks. End appends a boundary for main work and closes `HHMM-` in place for context work. It creates `## Actual` when required. The latest generated mutation has a configurable ten-second Undo, applied only if the complete generated slice still matches; unrelated or manually edited content is not removed.
 
-The pure core in `scheduled-blocks.js` exposes parsing, registry validation, three-state classification, state reconstruction, transactional Start/End transforms, inline task resolution, and guarded Undo. Run its regression tests with:
+The pure core in `schedule-runner.js` exposes parsing, registry validation, three-state classification, state reconstruction, transactional Start/End transforms, inline task resolution, and guarded Undo. Run its regression tests with:
 
 ```sh
-node scheduled-blocks.test.js
+node tests/schedule-runner.test.js
+node tests/schedule-runner.integration.test.js
 ```
 
 Done is separate from End. Done closes running occurrences linked to the canonical task, refuses to run while an affected main block has an active unrelated descendant, and then checks the linked Markdown task. A failed cross-file checkbox write rolls the Daily Note back; guarded Undo verifies and restores both files. This does not yet invoke Tasks-plugin recurrence or custom-status semantics.

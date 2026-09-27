@@ -1,8 +1,8 @@
-/* Scheduled Blocks core. Works in Obsidian (window.ScheduledBlocks) and Node. */
+/* Schedule Runner core. Works in Obsidian (window.ScheduleRunner) and Node. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.ScheduledBlocks = api;
+  root.ScheduleRunner = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
@@ -129,6 +129,13 @@
       if (!Array.isArray(group) || group.length < 2) errors.push(`Exclusive group ${n + 1} must contain at least two codes`);
       for (const code of group || []) if (!codeSet.has(code) && !aliases.has(code)) errors.push(`Exclusive group ${n + 1} has unknown code '${code}'`);
     }
+    const settings = raw?.settings || {};
+    if (settings["warning-level"] != null && !["all", "conflicts-and-unconfirmed", "conflicts-only", "none"].includes(settings["warning-level"]))
+      errors.push(`Unknown warning-level '${settings["warning-level"]}'`);
+    if (settings["new-scope-style"] != null && !["compact", "slash"].includes(settings["new-scope-style"]))
+      errors.push(`Unknown new-scope-style '${settings["new-scope-style"]}'`);
+    if (settings["undo-seconds"] != null && (!Number.isFinite(settings["undo-seconds"]) || settings["undo-seconds"] < 0))
+      errors.push("undo-seconds must be a non-negative number");
     if (errors.length) return { ok: false, errors };
     const canonical = c => aliases.get(c) || c;
     const parents = new Map(codes.map(c => [c, new Set((projects[c].parents || []).map(canonical))]));
@@ -184,6 +191,37 @@
     if (entails) return { state: "confirmed", unknown: false };
     const compatible = tLive.some(tt => bLive.some(bt => !impossible(new Set([...tt, ...bt]), reg)));
     return { state: compatible ? "unconfirmed" : "conflict", unknown: false };
+  }
+
+  function expressionStyle(source, fallback = "compact") {
+    return String(source).includes("/") ? "slash" : String(source).match(/[^,()]\s+[^,()]/u) ? fallback : "compact";
+  }
+  function formatExpression(source, reg, requestedStyle = "preserve") {
+    if (source === true || source == null || String(source).trim() === "") return true;
+    const style = requestedStyle === "preserve"
+      ? expressionStyle(source, reg.raw?.settings?.["new-scope-style"] || "compact")
+      : requestedStyle;
+    const order = code => reg.projects[reg.canonical(code)]?.order ?? Number.MAX_SAFE_INTEGER;
+    const render = (node, parent = null) => {
+      if (node.type === "true") return "true";
+      if (node.type === "code") return reg.codes.has(reg.canonical(node.code)) ? reg.canonical(node.code) : node.code;
+      const nodes = node.type === "and" ? [...node.nodes].sort((a, b) => {
+        const ac = a.type === "code" ? order(a.code) : Number.MAX_SAFE_INTEGER;
+        const bc = b.type === "code" ? order(b.code) : Number.MAX_SAFE_INTEGER;
+        return ac - bc;
+      }) : node.nodes;
+      const separator = node.type === "or" ? "," : style === "slash" ? "/" : "";
+      const rendered = nodes.map(child => render(child, node.type));
+      const value = [...new Set(rendered)].join(separator);
+      return parent === "and" && node.type === "or" ? `(${value})` : value;
+    };
+    return render(parseExpression(source, reg));
+  }
+  function shouldShowClassification(state, setting = "conflicts-and-unconfirmed") {
+    if (setting === "none") return false;
+    if (setting === "conflicts-only") return state === "conflict";
+    if (setting === "all") return true;
+    return state === "conflict" || state === "unconfirmed";
   }
 
   const TIME = "(?:[01]\\d|2[0-3])[0-5]\\d";
@@ -356,19 +394,42 @@
     if (!entry) throw new Error("Actual entry no longer exists");
     const lines = state.section.lines.slice(), replacement = timeMinutes(value);
     if (edge === "end" && entry.role !== "context") throw new Error("Only context entries have editable inline end times");
-    const parent = entry.parent;
     if (edge === "start") {
-      if (parent && replacement < timeMinutes(parent.start)) throw new Error("A nested start cannot precede its parent");
-      const children = state.section.entries.filter(e => e.parent === entry);
-      if (children.some(child => replacement > timeMinutes(child.start))) throw new Error("A parent start cannot follow a child start");
-      if (entry.end && replacement > timeMinutes(entry.end)) throw new Error("Start cannot follow end");
       lines[entry.line] = lines[entry.line].replace(new RegExp(`(${TIME})(?=-|\\s)`), value);
     } else {
       if (!entry.end) throw new Error("End the context before editing its end time");
-      if (replacement < timeMinutes(entry.start)) throw new Error("End cannot precede start");
       lines[entry.line] = lines[entry.line].replace(new RegExp(`(${TIME})-(${TIME})`), `$1-${value}`);
     }
-    return lines.join("\n");
+    const result = lines.join("\n"), validation = validateActualIntervals(result);
+    if (!validation.ok) throw new Error(validation.errors[0]);
+    return result;
+  }
+  function actualIntervals(text) {
+    const section = parseSection(text, "Actual"), entries = section.entries;
+    return entries.filter(e => e.role !== "boundary").map((entry, index) => {
+      if (entry.role === "context") return { entry, start: timeMinutes(entry.start), end: entry.end ? timeMinutes(entry.end) : null };
+      let end = null;
+      for (const candidate of entries.slice(index + 1)) {
+        if ((candidate.role === "boundary" || candidate.role === "main") && candidate.indent <= entry.indent) {
+          end = timeMinutes(candidate.start); break;
+        }
+      }
+      return { entry, start: timeMinutes(entry.start), end };
+    });
+  }
+  function validateActualIntervals(text) {
+    const intervals = actualIntervals(text), errors = [];
+    for (const interval of intervals) {
+      const { entry, start, end } = interval;
+      if (end != null && end < start) errors.push(`'${entry.body || entry.id}' ends before it starts`);
+      if (!entry.parent) continue;
+      const parent = intervals.find(x => x.entry === entry.parent);
+      if (!parent) continue;
+      if (start < parent.start) errors.push(`'${entry.body || entry.id}' starts before its parent`);
+      if (parent.end != null && (start > parent.end || end != null && end > parent.end))
+        errors.push(`'${entry.body || entry.id}' falls outside its parent interval`);
+    }
+    return { ok: errors.length === 0, errors, intervals };
   }
   function scopeToken(body, reg) {
     const token = String(body || "").trim().split(/\s+/, 1)[0];
@@ -379,12 +440,14 @@
       return token;
     } catch (_) { return null; }
   }
-  function inheritedRequirement(entry, reg) {
+  function inheritedRequirement(entry, reg, style = "preserve") {
     const scopes = [];
     for (let p = entry; p; p = p.parent) if (p.role === "main" || p === entry) {
       const scope = scopeToken(p.body, reg); if (scope) scopes.unshift(`(${scope})`);
     }
-    return scopes.length ? scopes.join("/") : true;
+    if (!scopes.length) return true;
+    const source = scopes.join("/");
+    return formatExpression(source, reg, style === "preserve" ? (scopes.some(x => x.includes("/")) ? "slash" : reg.raw?.settings?.["new-scope-style"] || "compact") : style);
   }
   function replaceIfUnchanged(current, write) {
     const lines = String(current).split(/\r?\n/);
@@ -404,7 +467,7 @@
   }
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
-  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, parseSection, allBlockIds, ensurePlanIds,
-    actualState, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
+  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, ensurePlanIds,
+    actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

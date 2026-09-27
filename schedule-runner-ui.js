@@ -1,25 +1,14 @@
----
-aliases: [Scheduled Block Runner]
-created: 2026-09-27
----
-
-# Scheduled Block Runner
-
-> [!warning] Incomplete prototype
-> This runner does not yet implement the full Scheduled Blocks design. See [[IMPLEMENTATION_STATUS]] for the exact implemented, partial, and missing feature list.
-
-This runner is independent of [[routine-runner]]. Implemented times are UTC; selecting a card never starts it.
-
-```dataviewjs
+/* Schedule Runner Obsidian/Dataview UI adapter. */
+(async function ({ dv, app, moment, Notice, config }) {
 const DIR = dv.current().file.folder;
-const CORE_PATH = `${DIR}/scheduled-blocks.js`;
-const REGISTRY_PATH = `${DIR}/projects.yaml`;
+  const CORE_PATH = `${DIR}/schedule-runner.js`;
+const REGISTRY_PATH = config.registryPath || `${DIR}/projects.yaml`;
 const UNDO_KEY = "__scheduledBlocksUndo";
 
 try {
   // The core is a UMD module. Evaluating it only installs one namespaced object.
   (0, eval)(await app.vault.adapter.read(CORE_PATH));
-  const SB = globalThis.ScheduledBlocks;
+  const SB = globalThis.ScheduleRunner;
   const rawRegistry = SB.parseRegistryYaml(await app.vault.adapter.read(REGISTRY_PATH));
   const registry = SB.validateRegistry(rawRegistry);
   if (!registry.ok) throw new Error(`Invalid projects.yaml:\n${registry.errors.join("\n")}`);
@@ -154,6 +143,12 @@ try {
       root.createEl("h3", { text: "Recent contexts" });
       for (const e of endedContexts) {
         const row = root.createEl("div", { cls: "sb-row sb-muted" }); row.createEl("span", { text: e.body });
+        const slug = actualPlanSlug(e), planned = plan.entries.find(p => p.role === "context" && p.id?.replace(/^p-/, "") === slug);
+        if (planned?.end) {
+          const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(2));
+          const late = minutes(e.end) - minutes(planned.end);
+          if (late > 0) row.createEl("span", { text: `Ended ${late}m late`, cls: "sb-error" });
+        }
         const start = row.createEl("button", { text: e.start }); start.onclick = () => editTime(text, e, "start");
         const end = row.createEl("button", { text: e.end }); end.onclick = () => editTime(text, e, "end");
       }
@@ -167,7 +162,9 @@ try {
       row.createEl("strong", { text: e.body }); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
       const requirement = SB.inheritedRequirement(e, registry), evidence = await taskEvidence(e.body);
       if (evidence) {
-        const result = SB.classify(evidence.source, requirement, registry); row.createEl("span", { text: `${result.state}: ${evidence.label}`, cls: result.state === "conflict" ? "sb-error" : "sb-muted" });
+        const result = SB.classify(evidence.source, requirement, registry);
+        if (SB.shouldShowClassification(result.state, rawRegistry.settings?.["warning-level"]))
+          row.createEl("span", { text: `${result.state}: ${evidence.label}`, cls: result.state === "conflict" ? "sb-error" : "sb-muted" });
         if (evidence.blockId) {
           const affected = state.mainChain.findIndex(a => SB.taskBlockId(a.body) === evidence.blockId);
           const descendantBlocked = affected >= 0 && state.mainChain.slice(affected + 1).some(a => SB.taskBlockId(a.body) !== evidence.blockId);
@@ -199,4 +196,4 @@ try {
 } catch (error) {
   dv.el("div", error.stack || error.message, { cls: "sb-error" });
 }
-```
+})(globalThis.__scheduleRunnerEntry);
