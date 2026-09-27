@@ -1,0 +1,106 @@
+const assert = require("assert");
+const fs = require("fs");
+const S = require("./scheduled-blocks.js");
+
+const registryFromDisk = S.parseRegistryYaml(fs.readFileSync(`${__dirname}/projects.yaml`, "utf8"));
+assert.equal(registryFromDisk.version, 1);
+assert.deepEqual(registryFromDisk.projects["甲"].parents, ["w"]);
+assert.deepEqual(registryFromDisk["exclusive-groups"], []);
+assert.equal(registryFromDisk.settings["undo-seconds"], 10);
+assert.throws(() => S.parseRegistryYaml("projects:\n  w:\n    order: 1\n  w:\n    order: 2\n"), /Duplicate registry key/);
+
+const raw = { version: 1, projects: {
+  w: { label: "Work", order: 10, parents: [], aliases: ["職"] },
+  甲: { label: "A", order: 20, parents: ["w"], aliases: [] },
+  p: { label: "Personal", order: 30, parents: [], aliases: [] },
+  運: { label: "Exercise", order: 40, parents: [], aliases: [] },
+}, "exclusive-groups": [["w", "p"]], settings: {} };
+const reg = S.validateRegistry(raw); assert.equal(reg.ok, true, reg.errors?.join("\n"));
+const state = (a, b) => S.classify(a, b, reg).state;
+assert.equal(state("w甲", "w"), "confirmed");
+assert.equal(state("w/運", "w運"), "confirmed");
+assert.equal(state("w", "w甲"), "unconfirmed");
+assert.equal(state("w", "w,p"), "confirmed");
+assert.equal(state("w,p", "w"), "unconfirmed");
+assert.equal(state(true, "w"), "unconfirmed");
+assert.equal(state("p", "w"), "conflict");
+assert.equal(state("甲", "w"), "confirmed");
+assert.equal(state("職", "w"), "confirmed");
+assert.equal(S.classify("x", "w", reg).unknown, true);
+assert.equal(state("p運,w", "運"), "unconfirmed");
+assert.equal(state("(p,w)運", "運"), "confirmed");
+assert.equal(S.resolveTaskClassification("Do it #t/w #t/運", "p"), "(w)/(運)");
+assert.equal(S.resolveTaskClassification("Do it", "p"), "p");
+assert.equal(S.resolveTaskClassification("Do it", null), true);
+
+assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["b"] }, b: { order: 2, parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
+assert.equal(S.validateRegistry({ projects: { a: { order: 1, parents: [], aliases: ["x"] }, b: { order: 2, parents: [], aliases: ["x"] } }, "exclusive-groups": [] }).ok, false);
+
+let note = `# Day\n\n## Plan\n\n- 1000 w ^p-work\n  - 1000 +25m Pomodoro ^p-pomo\n    - 1000 Task A ^p-task-a\n    - 1010 — ^p-task-a-end\n- 1030-1130 coworking ^p-cowork\n`;
+const plan = S.parseSection(note, "Plan");
+assert.deepEqual(plan.entries.map(x => x.role), ["main", "main", "main", "boundary", "context"]);
+note = S.startBlock(note, plan.entries[2], new Date("2026-09-27T10:04:00Z"));
+assert.match(note, /## Actual\n\n- 1004 w/);
+let actual = S.actualState(note);
+assert.equal(actual.mainChain.length, 3); assert.equal(actual.mainLeaf.body, "Task A");
+assert.throws(() => S.startBlock(note, plan.entries[0]), /End the current main leaf/);
+assert.throws(() => S.endBlock(note, actual.mainChain[0]), /descendant/);
+note = S.endBlock(note, actual.mainLeaf, new Date("2026-09-27T10:16:00Z"));
+assert.equal(S.actualState(note).mainLeaf.body, "Pomodoro");
+assert.equal(S.completedPlanSlugs(note).has("task-a"), true);
+const siblingPlanText = `## Plan\n- 1000 Parent ^p-parent\n  - 1000 First ^p-first\n  - 1010 Second ^p-second\n`;
+const siblingPlan = S.parseSection(siblingPlanText, "Plan");
+let siblingActual = S.startBlock(siblingPlanText, siblingPlan.entries[1], new Date("2026-09-27T10:00:00Z"));
+siblingActual = S.endBlock(siblingActual, S.actualState(siblingActual).mainLeaf, new Date("2026-09-27T10:10:00Z"));
+siblingActual = S.startBlock(siblingActual, siblingPlan.entries[2], new Date("2026-09-27T10:10:00Z"));
+assert.deepEqual(S.actualState(siblingActual).mainChain.map(x => x.body), ["Parent", "Second"]);
+note = S.startBlock(note, plan.entries[4], new Date("2026-09-27T10:33:00Z"));
+actual = S.actualState(note); assert.equal(actual.contexts.length, 1);
+note = S.endBlock(note, actual.contexts[0], new Date("2026-09-27T11:35:00Z"));
+assert.equal(S.actualState(note).contexts.length, 0);
+note = S.startBlock(note, plan.entries[4], new Date("2026-09-27T11:40:00Z"));
+assert.match(note, /\^a-cowork-2/);
+const lines = note.split(/\r?\n/), line = lines.findIndex(x => x.includes("^a-cowork-2"));
+const undo = S.replaceIfUnchanged(note, { line, before: null, after: lines[line] });
+assert.equal(undo.ok, true); assert.doesNotMatch(undo.text, /\^a-cowork-2/);
+assert.equal(S.replaceIfUnchanged(note.replace("cowork-2", "edited"), { line, before: null, after: lines[line] }).ok, false);
+const multi = S.replaceIfUnchanged("a\nx\ny\nz", { start: 1, beforeLines: ["b"], afterLines: ["x", "y"] });
+assert.deepEqual(multi, { ok: true, text: "a\nb\nz" });
+assert.equal(S.replaceIfUnchanged("a\nx\nEDIT\nz", { start: 1, beforeLines: ["b"], afterLines: ["x", "y"] }).ok, false);
+
+const missingIds = `## Plan\n- 0550 p eat fish\n  - 0600 Task A\n  - 0630 —\n- 0700-0800 coworking\n`;
+const repaired = S.ensurePlanIds(missingIds);
+assert.equal(repaired.changed, true);
+assert.equal(repaired.assigned.length, 4);
+assert.match(repaired.text, /- 0550 p eat fish \^p-p-eat-fish/);
+assert.match(repaired.text, /- 0630 — \^p-task-a-end/);
+assert.equal(S.ensurePlanIds(repaired.text).changed, false);
+const colliding = S.ensurePlanIds(`## Plan\n- 0500 Same\n- 0600 Same\n`);
+assert.match(colliding.text, /\^p-same\n/);
+assert.match(colliding.text, /\^p-same-2\n/);
+assert.equal(S.ensurePlanIds(`## Plan\n- 0500 A ^p-x\n- 0600 B ^p-x\n`).errors.length, 1);
+const inherited = S.parseSection(`## Plan\n- 0500 w Parent\n  - 0510 運 Child\n`, "Plan");
+assert.equal(S.inheritedRequirement(inherited.entries[1], reg), "(w)/(運)");
+assert.equal(S.scopeToken("eat fish", reg), null);
+assert.deepEqual(S.progressFor({ role: "main", duration: 25 }, { start: "1000" }, new Date("2026-09-27T10:10:00Z")),
+  { kind: "relative", start: 600, end: 625, elapsed: 10, duration: 25, percent: 40, overrun: 0 });
+let editNote = `## Actual\n- 1000 Parent ^a-parent-1\n  - 1010 Child ^a-child-1\n- 1030-1100 Context ^a-context-1\n`;
+assert.throws(() => S.editActualTime(editNote, 1, "start", "1015"), /child/);
+editNote = S.editActualTime(editNote, 3, "end", "1115");
+assert.match(editNote, /1030-1115/);
+const donePlan = `## Plan\n- 0900 [[Tasks#^eat|Eat]] ^p-eat\n- 0900-1000 [[Tasks#^eat|Eat]] ^p-eat-context\n`;
+const doneEntries = S.parseSection(donePlan, "Plan").entries;
+let doneActual = S.startBlock(donePlan, doneEntries[0], new Date("2026-09-27T09:00:00Z"));
+doneActual = S.startBlock(doneActual, doneEntries[1], new Date("2026-09-27T09:01:00Z"));
+doneActual = S.doneTaskActuals(doneActual, "eat", new Date("2026-09-27T09:20:00Z"));
+assert.equal(S.actualState(doneActual).mainLeaf, null);
+assert.equal(S.actualState(doneActual).contexts.length, 0);
+assert.match(doneActual, /0901-0920 \[\[Tasks#\^eat\|Eat\]\]/);
+const descendant = `## Actual\n- 0900 [[Tasks#^eat|Eat]] ^a-eat-1\n  - 0905 Other ^a-other-1\n`;
+assert.throws(() => S.doneTaskActuals(descendant, "eat"), /active descendant/);
+let pausedMain = S.startBlock(`## Plan\n- 0900 Focus ^p-focus\n`, S.parseSection(`## Plan\n- 0900 Focus ^p-focus\n`, "Plan").entries[0], new Date("2026-09-27T09:00:00Z"));
+pausedMain = S.endBlock(pausedMain, S.actualState(pausedMain).mainLeaf, new Date("2026-09-27T09:10:00Z"), "pause");
+assert.equal(S.completedPlanSlugs(pausedMain).has("focus"), false);
+
+console.log("scheduled-blocks: all tests passed");

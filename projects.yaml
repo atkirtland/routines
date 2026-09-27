@@ -1,0 +1,30 @@
+version: 1
+
+projects:
+  w:
+    label: Work
+    order: 10
+    parents: []
+    aliases: []
+  甲:
+    label: Project A
+    order: 20
+    parents: [w]
+    aliases: []
+  p:
+    label: Personal
+    order: 30
+    parents: []
+    aliases: []
+  運:
+    label: Exercise
+    order: 40
+    parents: []
+    aliases: []
+
+exclusive-groups: []
+
+settings:
+  warning-level: conflicts-and-unconfirmed
+  undo-seconds: 10
+  new-scope-style: compact
