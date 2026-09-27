@@ -361,9 +361,12 @@
   function ensureActual(text) { return /^##\s+Actual\s*$/mi.test(text) ? text : `${text.replace(/\s*$/, "")}\n\n## Actual\n`; }
   function appendActual(text, line) {
     const base = ensureActual(text), lines = String(base).split(/\r?\n/), actual = heading(lines, "Actual");
-    if (actual >= 0 && lines.slice(actual + 1).every(x => !x.trim()))
-      return `${lines.slice(0, actual + 1).join("\n")}\n\n${line}\n`;
-    return `${base.replace(/\s*$/, "")}\n${line}\n`;
+    const end = sectionEnd(lines, actual);
+    let insert = end;
+    while (insert > actual + 1 && !lines[insert - 1].trim()) insert--;
+    if (insert === actual + 1) lines.splice(insert, 0, "", line);
+    else lines.splice(insert, 0, line);
+    return lines.join("\n").replace(/\s*$/, "") + "\n";
   }
   function dismissedPlanIds(text) {
     return new Set([...String(text).matchAll(/%%\s*scheduled-block-dismissed:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));

@@ -110,6 +110,26 @@
     };
     return nodes.map(keep).filter(Boolean);
   }
+  function taskPath(node, map) {
+    const path = [];
+    for (let current = node; current; current = current.parentId ? map.get(current.parentId) : null) path.unshift(current);
+    return path;
+  }
+  function taskAtLine(parsed, line) {
+    return parsed.tasks.find(task => task.line === line) || null;
+  }
+  function cloneTaskTree(node) {
+    if (!node) return null;
+    return { ...node, children: node.children.map(cloneTaskTree) };
+  }
+  function referencedTaskTree(content, line, defaultEstimateMs = DEFAULT_ESTIMATE_MS) {
+    const parsed = parseRoutineText(content, defaultEstimateMs);
+    const source = taskAtLine(parsed, line);
+    return { parsed, root: cloneTaskTree(source) };
+  }
+  function availableLeaves(root) {
+    return root ? flatten([root]).filter(node => !node.checked && node.children.every(child => child.checked)) : [];
+  }
   function elapsedForSession(session, now = Date.now()) {
     if (!session) return 0;
     return session.elapsedBeforeStartMs + (session.startedAt == null ? 0 : Math.max(0, now - session.startedAt));
@@ -117,5 +137,6 @@
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,
     parseEstimateMs, parseGoalCount, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
-    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree, elapsedForSession };
+    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree,
+    taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, elapsedForSession };
 });

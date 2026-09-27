@@ -4,7 +4,7 @@ See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the feature ledger 
 
 This directory contains two deliberately separate runners:
 
-- `routine-runner.md` is the thin configuration/entry note for the checkbox routine/countdown runner. Its Obsidian adapter is `routine-runner-ui.js`, and its testable parsing, tree, timing, and formatting logic is `routine-runner.js`. Schedule Runner does not load, edit, or share state with it.
+- `routine-runner.md` is the thin configuration/entry note for the checkbox routine/countdown runner. Its Obsidian adapter is `routine-runner-ui.js`, and its testable parsing, tree, timing, and formatting logic is `routine-runner.js`. `routine-runner-embed.js` is the shared nested-task component used by both runners. Schedule Runner does not share Routine Runner's active session or cache state.
 - `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`.
 
 All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
@@ -28,7 +28,7 @@ All timestamps and the reusable time editor use UTC. Start times and completed c
 
 `HHMM` starts a main block. `HHMM-HHMM` is an anchored context, `HHMM-` is a running Actual context, and `HHMM —` is an explicit main boundary. A `+duration` main timer begins at its actual Start; a context range remains tied to its scheduled clock times. Main blocks use transitions/boundaries—not ranges—for exact allocations.
 
-The runner enforces one active main ancestor-to-leaf chain. A Start click on a nested main block records its missing ancestors in the same write. Starting a different main leaf is disabled until the active leaf is explicitly ended. A parent cannot end with an active descendant. Contexts are independent and may overlap the main chain and one another. Pause closes the current occurrence and Resume creates another. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done.
+The runner enforces one active main ancestor-to-leaf chain. A Start click on a nested main block records its missing ancestors in the same write. Starting a different main leaf is disabled until the active leaf is explicitly ended. A parent cannot end with an active descendant. Contexts are independent and may overlap the main chain and one another. The schedule block's Pause closes the current occurrence and Resume creates another. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done.
 
 Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs receive random ASCII-only IDs in one guarded write; existing IDs are preserved, generated collisions are avoided, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<random-plan-token>-<occurrence>`. The runner can also create running, unplanned contexts with standalone random ASCII IDs.
 
@@ -61,7 +61,7 @@ For linked block tasks, the runner loads the canonical task, applies inline-over
 
 ## Runner and validation states
 
-The prototype only mutates Markdown after explicit Start, End, start-time edit, or Undo clicks. End appends a boundary for main work and closes `HHMM-` in place for context work. It creates `## Actual` when required. The latest generated mutation has a configurable ten-second Undo, applied only if the complete generated slice still matches; unrelated or manually edited content is not removed.
+The prototype only mutates Markdown after explicit Start, End, start-time edit, or Undo clicks. End appends a boundary for main work and closes `HHMM-` in place for context work. It creates `## Actual` when required, and all generated entries are inserted before the next heading so later daily-note sections remain outside Actual. The latest generated mutation has a configurable ten-second Undo, applied only if the complete generated slice still matches; unrelated or manually edited content is not removed.
 
 The pure core in `schedule-runner.js` exposes parsing, registry validation, three-state classification, state reconstruction, transactional Start/End transforms, inline task resolution, and guarded Undo. Run its regression tests with:
 
@@ -71,4 +71,6 @@ node tests/schedule-runner.integration.test.js
 node tests/routine-runner.test.js
 ```
 
-Done is separate from End. Done closes running occurrences linked to the canonical task, refuses to run while an affected main block has an active unrelated descendant, and then checks the linked Markdown task. A failed cross-file checkbox write rolls the Daily Note back; guarded Undo verifies and restores both files. This does not yet invoke Tasks-plugin recurrence or custom-status semantics.
+Done is separate from End. Task Done changes the canonical task checkbox only; it never ends, pauses, or otherwise rewrites an Actual occurrence. End and the schedule block's Pause remain the only controls for closing schedule intervals.
+
+When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, count goals, Pause/Resume, Skip, Done, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, result formatting, and completion, while retaining independent timer state.

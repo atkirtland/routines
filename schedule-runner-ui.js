@@ -8,6 +8,9 @@ try {
   // The core is a UMD module. Evaluating it only installs one namespaced object.
   (0, eval)(await app.vault.adapter.read(CORE_PATH));
   const SB = globalThis.ScheduleRunner;
+  (0, eval)(await app.vault.adapter.read(`${DIR}/routine-runner.js`));
+  (0, eval)(await app.vault.adapter.read(`${DIR}/routine-runner-embed.js`));
+  const RRE = globalThis.RoutineRunnerEmbed;
   const rawRegistry = config.registry;
   const registry = SB.validateRegistry(rawRegistry);
   if (!registry.ok) throw new Error(`Invalid Schedule Runner registry:\n${registry.errors.join("\n")}`);
@@ -22,7 +25,7 @@ try {
   const root = dv.container;
   root.empty(); root.addClass("sb-root");
   const style = document.createElement("style");
-  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}`;
+  style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}.rr-embedded{margin-top:.65em;padding:1em;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--background-secondary)}.rr-embedded-header{color:var(--text-muted);font-size:.85em;margin-bottom:.35em}.rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est,.rr-next{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}.rr-timer{text-align:center;font-size:2.2em;font-weight:700;font-variant-numeric:tabular-nums}.rr-timer.rr-overdue{color:var(--color-red)}.rr-bar{height:10px;border-radius:5px;background:var(--background-modifier-border);overflow:hidden;margin:.75em 0 1em}.rr-bar-fill{height:100%;width:0;background:var(--color-green,#4caf50)}.rr-bar-fill.rr-overdue{background:var(--color-red)}.rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent)}.rr-count-row{display:flex;align-items:center;justify-content:center;gap:.6em;margin:.75em 0 1em}.rr-count-value{font-size:1.8em;font-weight:700}.rr-count-goal,.rr-count-sep{color:var(--text-muted);font-size:1.4em}.rr-next{margin-top:.75em;margin-bottom:0}.rr-embedded-done{text-align:center;font-weight:600}`;
   root.appendChild(style);
 
   const button = (label, fn, disabled = false) => { const b = document.createElement("button"); b.textContent = label; b.disabled = disabled; b.onclick = fn; return b; };
@@ -76,30 +79,44 @@ try {
     const lineIndex = match[2] ? taskLines.findIndex(x => x.match(new RegExp(`\\^${match[2]}\\s*$`))) : -1;
     const line = lineIndex >= 0 ? taskLines[lineIndex] : "";
     const pageProject = app.metadataCache.getFileCache(target)?.frontmatter?.project || null;
-    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask: /^\s*[-*+]\s+\[[ xX]\]/.test(line), completed: /^\s*[-*+]\s+\[[xX]\]/.test(line) };
+    const isTask = /^\s*[-*+]\s+\[[ xX]\]/.test(line);
+    const nested = isTask ? RRE.model(taskText, lineIndex) : null;
+    const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
+    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: match[2], isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
-  const completeTask = async (dailyText, evidence) => {
+  const embeddedRuns = window.__scheduleRunnerRoutineRuns ?? (window.__scheduleRunnerRoutineRuns = { states: {}, disposers: [] });
+  embeddedRuns.disposers.splice(0).forEach(dispose => dispose());
+  const addEmbeddedRoutine = (card, evidence) => {
+    if (!evidence?.isTask || evidence.lineIndex < 0) return;
+    const focusKey = `${evidence.target.path}#^${evidence.blockId}`;
+    const initial = RRE.model(evidence.taskText, evidence.lineIndex);
+    if (!initial || (!initial.root.children.length && initial.path.length === 1)) return;
+    const host = card.createDiv({ cls: "rr-embedded" });
+    const runState = embeddedRuns.states[focusKey] ?? (embeddedRuns.states[focusKey] = RRE.createRunState());
+    const view = RRE.renderRunner(host, {
+      content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
+      onRefresh: render,
+      onComplete: async (line, result) => {
+        try {
+          const current = await app.vault.read(evidence.target);
+          await RRE.completeTask(app, evidence.target, current, line, null, result);
+        } catch (error) { new Notice(`Task completion failed: ${error.message}`); }
+        await render();
+      },
+    });
+    embeddedRuns.disposers.push(view.dispose);
+  };
+  const completeTask = async (_dailyText, evidence) => {
     if (!evidence.blockId || evidence.lineIndex < 0 || !/- \[ \]/.test(evidence.line)) return new Notice("Linked canonical task is not an incomplete checkbox");
-    let nextDaily;
-    try { nextDaily = SB.doneTaskActuals(dailyText, evidence.blockId, new Date()); } catch (x) { return new Notice(x.message); }
-    if (evidence.target.path === dailyPath) {
-      const lines = nextDaily.split(/\r?\n/), index = lines.findIndex(x => x.includes(`^${evidence.blockId}`));
-      if (index < 0 || !/- \[ \]/.test(lines[index])) return new Notice("Canonical task changed before Done");
-      lines[index] = lines[index].replace(/- \[ \]/, "- [x]"); await write(dailyText, lines.join("\n")); return;
-    }
-    const taskLines = evidence.taskText.split(/\r?\n/); taskLines[evidence.lineIndex] = taskLines[evidence.lineIndex].replace(/- \[ \]/, "- [x]");
-    const nextTask = taskLines.join("\n"), extra = { path: evidence.target.path, before: evidence.taskText, after: nextTask };
     try {
-      await app.vault.modify(file, nextDaily);
-      await app.vault.modify(evidence.target, nextTask);
-    } catch (error) {
-      try { await app.vault.modify(file, dailyText); } catch (_) {}
-      new Notice(`Done failed and Daily Note was rolled back: ${error.message}`); return;
-    }
-    window[UNDO_KEY] = undoRecord(dailyText, nextDaily, extra); await render();
+      const current = await app.vault.read(evidence.target);
+      await RRE.completeTask(app, evidence.target, current, evidence.lineIndex);
+      await render();
+    } catch (error) { new Notice(`Task completion failed: ${error.message}`); }
   };
 
   async function render() {
+    embeddedRuns.disposers.splice(0).forEach(dispose => dispose());
     [...root.children].filter(x => x !== style).forEach(x => x.remove());
     const title = root.createEl("div", { cls: "sb-row" });
     title.createEl("strong", { text: `UTC · ${dailyPath}` });
@@ -146,6 +163,7 @@ try {
         const pid = actualPlanSlug(e), planned = plan.entries.find(p => p.id && p.id.replace(/^p-/, "") === pid);
         const progress = planned && SB.progressFor(planned, e, new Date());
         if (progress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${progress.percent}%`; if (progress.overrun) card.createDiv({ text: `Overrun ${progress.overrun}m`, cls: "sb-error" }); }
+        addEmbeddedRoutine(card, evidence);
       }
     }
     const endedContexts = state.section.entries.filter(e => e.role === "context" && e.end).slice(-5).reverse();
@@ -178,7 +196,7 @@ try {
         if (evidence.blockId) {
           const affected = state.mainChain.findIndex(a => SB.taskBlockId(a.body) === evidence.blockId);
           const descendantBlocked = affected >= 0 && state.mainChain.slice(affected + 1).some(a => SB.taskBlockId(a.body) !== evidence.blockId);
-          row.appendChild(button(evidence.completed ? "Done" : "Done", () => completeTask(text, evidence), evidence.completed || evidence.lineIndex < 0 || descendantBlocked));
+          row.appendChild(button("Done", () => completeTask(text, evidence), evidence.completed || evidence.lineIndex < 0 || descendantBlocked || evidence.hasIncompleteDescendants));
         }
       }
       let blocked = false;

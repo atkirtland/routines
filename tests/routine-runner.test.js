@@ -1,6 +1,7 @@
 const assert = require("assert");
 const path = require("path");
 const R = require(path.join(__dirname, "..", "routine-runner.js"));
+const E = require(path.join(__dirname, "..", "routine-runner-embed.js"));
 
 assert.equal(R.parseEstimateMs("Stretch"), 300000);
 assert.equal(R.parseEstimateMs("Stretch ⏱️ 10:05"), 605000);
@@ -41,5 +42,21 @@ assert.equal(R.selectedRoutineTree(roots).length, 1);
 assert(R.fuzzyScore("prnt", "Parent") >= 0);
 assert.equal(R.fuzzyScore("xyz", "Parent"), -1);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: 1000, startedAt: 5000 }, 8000), 4000);
+
+const embedded = E.model(`# Before
+- [ ] Morning routine ^morning-routine
+  - [ ] Make bed
+  - [ ] Breakfast
+    - [ ] Eat fruit
+- [ ] Unrelated
+`, 1, 4);
+assert.equal(embedded.root.display, "Morning routine");
+assert.equal(embedded.focus.display, "Eat fruit");
+assert.deepEqual(embedded.path.map(task => task.display), ["Morning routine", "Breakfast", "Eat fruit"]);
+assert.deepEqual(embedded.leaves.map(task => task.display), ["Make bed", "Eat fruit"]);
+assert.equal(embedded.hasIncompleteDescendants, true);
+assert.equal(E.model("- [ ] Root\n  - [ ] Child\n", 0, 99).focus.display, "Root");
+assert.equal(E.replacementForTask("  - [ ] Child", null), "  - [x] Child");
+assert.equal(E.replacementForTask("- [ ] Child", "- [x] Child ✅ 2026-09-27"), "- [x] Child ✅ 2026-09-27");
 
 console.log("routine-runner: all tests passed");

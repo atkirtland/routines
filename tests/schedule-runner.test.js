@@ -67,6 +67,25 @@ const multi = S.replaceIfUnchanged("a\nx\ny\nz", { start: 1, beforeLines: ["b"],
 assert.deepEqual(multi, { ok: true, text: "a\nb\nz" });
 assert.equal(S.replaceIfUnchanged("a\nx\nEDIT\nz", { start: 1, beforeLines: ["b"], afterLines: ["x", "y"] }).ok, false);
 
+const followedActual = `# Day
+
+## Plan
+- 0900 Focus ^p-focus
+
+## Actual
+
+## Notes
+- keep this after Actual
+`;
+const followedPlan = S.parseSection(followedActual, "Plan").entries[0];
+const followedStarted = S.startBlock(followedActual, followedPlan, new Date("2026-09-27T09:05:00Z"));
+assert.match(followedStarted, /## Actual\n\n- 0905 Focus \^a-focus-1\n\n## Notes/);
+assert.doesNotMatch(followedStarted, /## Notes[\s\S]*\^a-focus-1/);
+assert.equal(S.actualState(followedStarted).mainLeaf.body, "Focus");
+const followedEnded = S.endBlock(followedStarted, S.actualState(followedStarted).mainLeaf, new Date("2026-09-27T09:10:00Z"));
+assert.match(followedEnded, /## Actual[\s\S]*- 0910 — \^a-focus-1-end\n%% scheduled-block-ended: focus %%\n\n## Notes/);
+assert.equal(S.actualState(followedEnded).mainLeaf, null);
+
 const missingIds = `## Plan\n- 0550 p eat fish\n  - 0600 Task A\n  - 0630 —\n- 0700-0800 coworking\n`;
 const repaired = S.ensurePlanIds(missingIds);
 assert.equal(repaired.changed, true);

@@ -4,6 +4,9 @@ const DIR = dv.current().file.folder;
 const CORE_PATH = `${DIR}/routine-runner.js`;
 (0, eval)(await app.vault.adapter.read(CORE_PATH));
 const RR = globalThis.RoutineRunner;
+const EMBED_PATH = `${DIR}/routine-runner-embed.js`;
+(0, eval)(await app.vault.adapter.read(EMBED_PATH));
+const RRE = globalThis.RoutineRunnerEmbed;
 const DEFAULT_ESTIMATE_MS = config.defaultEstimateMs ?? RR.DEFAULT_ESTIMATE_MS;
 const REDRAW_INTERVAL_MS = config.redrawIntervalMs ?? 1000;
 const { TASK_LINE_RE, insertBeforeTasksMetadata, formatDuration } = RR;
@@ -523,9 +526,7 @@ function activateCurrentSession(now = Date.now()) {
 }
 
 function taskPath(node, map = nodeMap()) {
-  const path = [];
-  for (let cur = node; cur; cur = cur.parentId ? map.get(cur.parentId) : null) path.unshift(cur);
-  return path;
+  return RR.taskPath(node, map);
 }
 
 function pathLabel(node, map = nodeMap()) {
@@ -1182,14 +1183,7 @@ function renderRun() {
   const card = container.createDiv({ cls: "rr-card" });
   const crumbs = card.createDiv({ cls: "rr-task-text" });
   const path = taskPath(map.get(state.activeLeafId), map);
-  path.forEach((part, idx) => {
-    if (idx) crumbs.createSpan({ cls: "rr-crumb-sep", text: "→" });
-    const crumb = crumbs.createSpan({
-      cls: part.id === task.id ? "rr-crumb rr-crumb-current" : "rr-crumb",
-      text: part.display,
-    });
-    if (part.id !== task.id) crumb.addEventListener("click", () => enqueueAction(() => focusTask(part.id)));
-  });
+  RRE.renderBreadcrumbs(crumbs, path, task.line, (line, part) => enqueueAction(() => focusTask(part.id)), false);
   card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
 
   if (task.goalCount != null) {
