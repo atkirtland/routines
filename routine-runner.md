@@ -9,7 +9,7 @@ modified: 2026-09-27T00:00:00Z
 
 ```dataviewjs
 const config = {
-  defaultEstimateMs: 5 * 60 * 1000,
+  defaultEstimateMs: 0,
   redrawIntervalMs: 1000,
 };
 const uiPath = `${dv.current().file.folder}/routine-runner-ui.js`;

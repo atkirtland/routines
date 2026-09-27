@@ -6,7 +6,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const DEFAULT_ESTIMATE_MS = 5 * 60 * 1000;
+  const DEFAULT_ESTIMATE_MS = 0;
   const TIME_GOAL_RE = /⏱️?\s*(\d+):(\d{2})(?::(\d{2}))?/;
   const COUNT_GOAL_RE = /🎯\s*(\d+)/;
   const TASK_LINE_RE = /^(\s*[-*+]\s\[)([^\]])(\]\s?)(.*)$/;

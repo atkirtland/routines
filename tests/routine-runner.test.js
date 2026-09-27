@@ -3,7 +3,7 @@ const path = require("path");
 const R = require(path.join(__dirname, "..", "routine-runner.js"));
 const E = require(path.join(__dirname, "..", "routine-runner-embed.js"));
 
-assert.equal(R.parseEstimateMs("Stretch"), 300000);
+assert.equal(R.parseEstimateMs("Stretch"), 0);
 assert.equal(R.parseEstimateMs("Stretch ⏱️ 10:05"), 605000);
 assert.equal(R.parseEstimateMs("Long ⏱️ 1:02:03"), 3723000);
 assert.equal(R.parseEstimateMs("Custom", 42000), 42000);
