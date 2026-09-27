@@ -54,7 +54,10 @@
       const task = line.match(TASK_LINE_RE);
       if (!task) return;
       const description = task[4];
-      const display = description.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "").replace(/\s{2,}/g, " ").trim();
+      // Native Obsidian block IDs are source identity, not part of the task's
+      // human-facing label. Keep them in sourceLine for recovery/persistence.
+      const display = description.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "")
+        .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "").replace(/\s{2,}/g, " ").trim();
       const prefix = task[1].slice(0, task[1].search(/[-*+]/));
       let indent = 0;
       for (const character of prefix) indent += character === "\t" ? 4 : 1;
@@ -132,7 +135,11 @@
   }
   function elapsedForSession(session, now = Date.now()) {
     if (!session) return 0;
-    return session.elapsedBeforeStartMs + (session.startedAt == null ? 0 : Math.max(0, now - session.startedAt));
+    const elapsedBeforeStartMs = Number(session.elapsedBeforeStartMs) || 0;
+    if (session.startedAt == null) return Math.max(0, elapsedBeforeStartMs);
+    const startedAt = Number(session.startedAt);
+    if (!Number.isFinite(startedAt)) return Math.max(0, elapsedBeforeStartMs);
+    return Math.max(0, elapsedBeforeStartMs) + Math.max(0, Number(now) - startedAt);
   }
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,

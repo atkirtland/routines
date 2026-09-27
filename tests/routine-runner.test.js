@@ -9,6 +9,8 @@ assert.equal(R.parseEstimateMs("Long ⏱️ 1:02:03"), 3723000);
 assert.equal(R.parseEstimateMs("Custom", 42000), 42000);
 assert.equal(R.parseGoalCount("Push-ups 🎯 20"), 20);
 assert.equal(R.parseGoalCount("Push-ups"), null);
+assert.equal(R.parseRoutineText("- [ ] Visible label ^native-block-id\n").tasks[0].display, "Visible label");
+assert.equal(R.parseRoutineText("- [ ] 中文任务 ^任務-1\n").tasks[0].display, "中文任务");
 assert.equal(R.formatDuration(65000), "1:05");
 assert.equal(R.formatDuration(-3723000), "-1:02:03");
 
@@ -42,6 +44,8 @@ assert.equal(R.selectedRoutineTree(roots).length, 1);
 assert(R.fuzzyScore("prnt", "Parent") >= 0);
 assert.equal(R.fuzzyScore("xyz", "Parent"), -1);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: 1000, startedAt: 5000 }, 8000), 4000);
+assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: undefined, startedAt: "5000" }, 8000), 3000);
+assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: "1000", startedAt: null }, 8000), 1000);
 
 const embedded = E.model(`# Before
 - [ ] Morning routine ^morning-routine

@@ -7,9 +7,10 @@ const RR = globalThis.RoutineRunner;
 const EMBED_PATH = `${DIR}/routine-runner-embed.js`;
 (0, eval)(await app.vault.adapter.read(EMBED_PATH));
 const RRE = globalThis.RoutineRunnerEmbed;
+RRE.installStyles(document);
 const DEFAULT_ESTIMATE_MS = config.defaultEstimateMs ?? RR.DEFAULT_ESTIMATE_MS;
 const REDRAW_INTERVAL_MS = config.redrawIntervalMs ?? 1000;
-const { TASK_LINE_RE, insertBeforeTasksMetadata, formatDuration } = RR;
+const { formatDuration } = RR;
 
 const container = dv.container;
 container.empty();
@@ -43,66 +44,6 @@ style.textContent = `
     .rr-empty { color:var(--text-muted); padding:8px 0; }
     .rr-error { color:var(--color-red, #e5534b); padding:8px 10px; margin-bottom:0.75em; border:1px solid var(--color-red, #e5534b); border-radius:6px; }
     .rr-diagnostic { color:var(--text-muted); padding:6px 10px; margin-bottom:0.75em; border-left:3px solid var(--text-faint); font-size:0.85em; }
-    .rr-setup-tools { position:sticky; top:0; z-index:2; padding:0.55em; margin-bottom:0.6em; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
-    .rr-tools-row { display:flex; align-items:center; flex-wrap:wrap; gap:0.4em; }
-    .rr-tools-row + .rr-tools-row { margin-top:0.45em; }
-    .rr-tools-row .rr-input { flex:1 1 14em; width:auto; margin:0; }
-    .rr-tool-btn { padding:4px 8px; font-size:0.82em; border-radius:5px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
-    .rr-tool-btn:hover { background:var(--interactive-hover); }
-    .rr-reset-btn { margin-left:auto; }
-    .rr-summary { margin-left:auto; color:var(--text-muted); font-size:0.85em; white-space:nowrap; }
-    .rr-review-list { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; align-items:stretch; column-gap:0; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; margin-bottom:0.75em; }
-    .rr-review-item { display:contents; }
-    .rr-review-item > * { padding:6px 0; border-bottom:1px solid var(--background-modifier-border); box-sizing:border-box; }
-    .rr-review-list > .rr-review-item:last-child > * { border-bottom:none; }
-    .rr-review-item-disabled > * { opacity:0.45; }
-    .rr-review-item-disabled .rr-review-text { text-decoration:line-through; }
-    .rr-review-item-context .rr-review-label { color:var(--text-muted); font-style:italic; }
-    .rr-review-item-active > * { background:var(--background-modifier-hover); }
-    .rr-review-text { display:flex; align-items:center; min-width:0; }
-    .rr-disclosure { flex:none; width:1.4em; margin-left:0.35em; padding:0; border:0; background:transparent; color:var(--text-muted); cursor:pointer; }
-    .rr-review-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
-    .rr-badge { color:var(--text-muted); font-size:0.8em; background:var(--background-secondary); border-radius:4px; padding:1px 6px; white-space:nowrap; }
-    .rr-badge-group { display:flex; align-items:center; justify-content:flex-end; gap:0.4em; padding-left:0.6em; }
-    .rr-checkbox-cell { display:flex; align-items:center; justify-content:center; padding-left:0.6em; }
-    .rr-reorder { display:flex; align-items:center; justify-content:center; gap:2px; padding-left:0.6em; }
-    .rr-reorder-btn { line-height:1; font-size:0.7em; padding:2px 6px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
-    .rr-reorder-btn:hover:not(:disabled) { background:var(--interactive-hover); }
-    .rr-reorder-btn:disabled { opacity:0.3; cursor:default; }
-    .rr-card { border:1px solid var(--background-modifier-border); border-radius:8px; padding:1em; background:var(--background-secondary); }
-    .rr-task-text { font-size:1.15em; font-weight:600; margin-bottom:0.25em; }
-    .rr-crumb { cursor:pointer; color:var(--interactive-accent); }
-    .rr-crumb-current { cursor:default; color:var(--text-normal); }
-    .rr-crumb-sep { color:var(--text-faint); padding:0 0.35em; }
-    .rr-est { color:var(--text-muted); font-size:0.85em; margin-bottom:0.75em; }
-    .rr-timer-row { text-align:center; }
-    .rr-timer { font-size:2.2em; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text-normal); }
-    .rr-timer.rr-overdue { color:var(--color-red, #e5534b); }
-    .rr-bar { height:10px; border-radius:5px; background:var(--background-modifier-border); overflow:hidden; margin:0.75em 0 1em; }
-    .rr-bar-fill { height:100%; width:0%; background:var(--color-green, #4caf50); transition:width 0.2s linear, background-color 0.2s linear; }
-    .rr-bar-fill.rr-overdue { background:var(--color-red, #e5534b); }
-    .rr-count-row { display:flex; align-items:center; justify-content:center; gap:0.6em; margin:0.75em 0 1em; }
-    .rr-count-btn { flex:none; width:2.4em; font-size:1.2em; padding:6px 0; }
-    .rr-count-value { font-size:1.8em; font-weight:700; min-width:1.4em; text-align:center; cursor:pointer; border-bottom:1px dashed var(--text-faint); }
-    .rr-count-value:hover { color:var(--interactive-accent); }
-    .rr-count-sep { color:var(--text-muted); font-size:1.4em; }
-    .rr-count-goal { color:var(--text-muted); font-size:1.4em; font-weight:600; }
-    .rr-count-input { font-size:1.8em; font-weight:700; width:3.2em; text-align:center; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); }
-    .rr-btn-row { display:flex; gap:0.5em; }
-    .rr-btn { flex:1; padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
-    .rr-btn:hover { background:var(--interactive-hover); }
-    .rr-btn:disabled { opacity:0.5; cursor:default; }
-    .rr-btn-primary { background:var(--interactive-accent); color:var(--text-on-accent); border-color:var(--interactive-accent); }
-    .rr-btn-primary:hover { background:var(--interactive-accent-hover); }
-    .rr-status-menu { position:fixed; z-index:var(--layer-menu, 1000); min-width:190px; max-height:60vh; overflow:auto; padding:4px; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); box-shadow:var(--shadow-s); }
-    .rr-status-option { display:flex; width:100%; gap:0.6em; align-items:center; padding:6px 9px; border:0; border-radius:4px; background:transparent; color:var(--text-normal); text-align:left; cursor:pointer; }
-    .rr-status-option:hover, .rr-status-option:focus { background:var(--background-modifier-hover); }
-    .rr-status-symbol { min-width:2.2em; font-family:var(--font-monospace); }
-    .rr-status-type { margin-left:auto; color:var(--text-muted); font-size:0.8em; }
-    .rr-btn-stop { flex:none; padding:4px 14px; font-size:0.85em; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--interactive-normal); color:var(--text-normal); cursor:pointer; }
-    .rr-btn-stop:hover { background:var(--interactive-hover); }
-    .rr-next { margin-top:0.75em; color:var(--text-muted); font-size:0.9em; }
-    .rr-progress-label { font-weight:600; }
   `;
 
 // Dataview tears down and re-runs this whole block on a debounced timer whenever
@@ -160,7 +101,6 @@ const state = priorState?.version === STATE_VERSION ? priorState : { ...defaultS
 window[RR_STATE_KEY] = state;
 
 let refs = {};
-let statusMenuEl = null;
 const COORDINATOR_KEY = "__routineRunnerCoordinator";
 const coordinator = window[COORDINATOR_KEY] ?? {
   actionTail: Promise.resolve(),
@@ -408,9 +348,6 @@ function fuzzyScore(query, text) {
   return RR.fuzzyScore(query, text);
 }
 
-let wakeLock = null;
-let localIntervalId = null;
-let disposed = false;
 const VIEW_LIFECYCLE_KEY = "__routineRunnerViewCleanup";
 
 // A Dataview rerun replaces this execution. Tear down the previous view's
@@ -419,62 +356,8 @@ if (typeof window[VIEW_LIFECYCLE_KEY] === "function") {
   window[VIEW_LIFECYCLE_KEY]();
 }
 
-async function requestWakeLock() {
-  if (!("wakeLock" in navigator)) return;
-  try {
-    const requestedLock = await navigator.wakeLock.request("screen");
-    if (disposed) {
-      requestedLock.release().catch(() => {});
-      return;
-    }
-    wakeLock = requestedLock;
-    requestedLock.addEventListener("release", () => {
-      if (wakeLock === requestedLock) wakeLock = null;
-    });
-  } catch (e) {
-    wakeLock = null;
-  }
-}
-
-function releaseWakeLock() {
-  if (wakeLock) {
-    wakeLock.release().catch(() => {});
-    wakeLock = null;
-  }
-}
-
-// The OS revokes the wake lock whenever the screen actually turns off, so it
-// has to be re-requested once the app is visible again — otherwise the next
-// screen-off is permanent for the rest of the routine.
-const handleVisibilityChange = () => {
-  if (document.visibilityState === "visible" && localIntervalId && !wakeLock) {
-    requestWakeLock();
-  }
-};
-document.addEventListener("visibilitychange", handleVisibilityChange);
-
 function stopTimer() {
-  // Each Dataview execution owns only its local interval. In particular, an
-  // old view's delayed MutationObserver must never clear a replacement view's
-  // newly started interval through the shared state object.
-  if (localIntervalId) {
-    clearInterval(localIntervalId);
-    if (state.intervalId === localIntervalId) state.intervalId = null;
-    localIntervalId = null;
-  }
-  releaseWakeLock();
-}
-
-function startTimer() {
-  stopTimer();
-  activateCurrentSession();
-  localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-  state.intervalId = localIntervalId;
-  requestWakeLock();
-}
-
-function tick() {
-  updateTimerDisplay();
+  refs.sharedDispose?.();
 }
 
 function flatten(nodes) {
@@ -516,7 +399,7 @@ function elapsedForSession(session, now = Date.now()) {
 
 function settleSession(session, now = Date.now()) {
   if (!session || session.startedAt === null) return;
-  session.elapsedBeforeStartMs += Math.max(0, now - session.startedAt);
+  session.elapsedBeforeStartMs = (Number(session.elapsedBeforeStartMs) || 0) + Math.max(0, now - Number(session.startedAt));
   session.startedAt = null;
 }
 
@@ -672,33 +555,13 @@ async function restoreRoutine(saved) {
   return pruned;
 }
 
-function updateTimerDisplay() {
-  // An action owned by a superseded Dataview execution may still be finishing
-  // after a source-note edit triggered the replacement view. It may update the
-  // shared state, but must never repaint its detached/retiring DOM.
-  if (!isCurrentView() || state.screen !== "run" || !refs.timerEl) return;
-  const task = currentTask();
-  if (!task) return;
-  const session = currentSession();
-  const estimateMs = task.estimateMs;
-  const elapsedMs = elapsedForSession(session);
-  const remainingMs = estimateMs - elapsedMs;
-  const overdue = remainingMs < 0;
-  refs.timerEl.textContent = formatDuration(remainingMs);
-  refs.timerEl.toggleClass("rr-overdue", overdue);
-  const pct = Math.min(100, (elapsedMs / estimateMs) * 100);
-  refs.barFillEl.style.width = pct + "%";
-  refs.barFillEl.toggleClass("rr-overdue", overdue);
-}
-
 function render() {
   // Done edits the source note before it advances and saves. That edit can
   // trigger a Dataview rerun while the old action is still on the action queue.
   // Prevent the retiring execution from clearing/rebuilding UI after the new
   // generation has taken ownership of the view.
   if (!isCurrentView()) return;
-  statusMenuEl?.remove();
-  statusMenuEl = null;
+  refs.sharedDispose?.();
   container.empty();
   refs = {};
   if (state.cacheError) container.createDiv({ cls: "rr-error", text: state.cacheError });
@@ -874,198 +737,6 @@ function renderSectionCombo() {
   });
 }
 
-function visibleSetupRows() {
-  const query = state.taskQuery.trim().toLowerCase();
-  const collapsed = new Set(state.collapsedIds);
-  const rows = [];
-  function visit(node, siblings, idx, depth, ancestorsEnabled) {
-    const selfMatches = !query || node.display.toLowerCase().includes(query);
-    const descendantMatches = node.children.some(function hasMatch(child) {
-      return child.display.toLowerCase().includes(query) || child.children.some(hasMatch);
-    });
-    if (!selfMatches && !descendantMatches) return;
-    const effectiveHere = ancestorsEnabled && node.selected;
-    rows.push({ node, siblings, idx, depth, ancestorsEnabled, effectiveHere, selfMatches });
-    if (query || !collapsed.has(node.id)) {
-      node.children.forEach((child, childIdx) => visit(child, node.children, childIdx, depth + 1, effectiveHere));
-    }
-  }
-  state.tasks.forEach((node, idx) => visit(node, state.tasks, idx, 0, true));
-  return rows;
-}
-
-function renderTaskList() {
-  const list = container.createDiv({ cls: "rr-review-list" });
-  list.tabIndex = 0;
-  list.setAttribute("aria-label", "Task tree; use Vim keys j/k, h/l, x, Shift-J/Shift-K, gg/G, and slash");
-  const rows = visibleSetupRows();
-  if (!rows.some((row) => row.node.id === state.setupCursorId)) {
-    state.setupCursorId = rows[0]?.node.id ?? null;
-  }
-  if (rows.length === 0) {
-    list.createDiv({ cls: "rr-empty", text: "No matching tasks." });
-    return;
-  }
-  rows.forEach(({ node: t, siblings, idx, depth, ancestorsEnabled, effectiveHere: isEffective, selfMatches }) => {
-    const row = list.createDiv({ cls: "rr-review-item" });
-    if (!isEffective) row.addClass("rr-review-item-disabled");
-    if (state.taskQuery.trim() && !selfMatches) row.addClass("rr-review-item-context");
-    if (t.id === state.setupCursorId) row.addClass("rr-review-item-active");
-
-    const text = row.createSpan({ cls: "rr-review-text" });
-    text.style.paddingLeft = `${depth * 1.25}em`;
-    text.createSpan({ cls: "rr-review-label", text: t.display });
-    if (t.children.length) {
-      const disclosure = text.createEl("button", {
-        cls: "rr-disclosure",
-        text: state.collapsedIds.includes(t.id) && !state.taskQuery ? "▸" : "▾",
-        attr: { "aria-label": state.collapsedIds.includes(t.id) ? "Expand branch" : "Collapse branch" },
-      });
-      disclosure.addEventListener("click", (e) => { e.stopPropagation(); toggleCollapsed(t.id); });
-    }
-    text.addEventListener("click", () => {
-      state.setupCursorId = t.id;
-      render();
-      requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
-    });
-
-    const badges = row.createDiv({ cls: "rr-badge-group" });
-    if (t.goalCount != null) {
-      badges.createSpan({ cls: "rr-badge", text: `🎯 ${t.goalCount}` });
-    }
-    badges.createSpan({ cls: "rr-badge", text: formatDuration(t.estimateMs) });
-
-    const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
-    const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
-    checkbox.checked = t.selected;
-    checkbox.disabled = !ancestorsEnabled;
-    checkbox.addEventListener("change", () => {
-      t.selected = checkbox.checked;
-      render();
-    });
-
-    const reorder = row.createDiv({ cls: "rr-reorder" });
-    const upBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" });
-    upBtn.disabled = !ancestorsEnabled || idx === 0;
-    upBtn.addEventListener("click", () => {
-      [siblings[idx - 1], siblings[idx]] = [siblings[idx], siblings[idx - 1]];
-      render();
-    });
-    const downBtn = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" });
-    downBtn.disabled = !ancestorsEnabled || idx === siblings.length - 1;
-    downBtn.addEventListener("click", () => {
-      [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
-      render();
-    });
-  });
-
-  let pendingG = false;
-  list.addEventListener("keydown", (e) => {
-    if (["INPUT", "BUTTON"].includes(e.target.tagName)) return;
-    const current = rows.findIndex((row) => row.node.id === state.setupCursorId);
-    let nextIndex = current;
-    if (e.key === "j") nextIndex = Math.min(rows.length - 1, current + 1);
-    else if (e.key === "k") nextIndex = Math.max(0, current - 1);
-    else if (e.key === "G") nextIndex = rows.length - 1;
-    else if (e.key === "g") {
-      if (pendingG) nextIndex = 0;
-      pendingG = !pendingG;
-      e.preventDefault();
-      if (nextIndex !== current) {
-        state.setupCursorId = rows[nextIndex].node.id;
-        render();
-        requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
-      }
-      return;
-    } else if (e.key === "/") {
-      e.preventDefault();
-      container.querySelector(".rr-task-search")?.focus();
-      return;
-    } else if ([" ", "x"].includes(e.key)) {
-      const item = rows[current];
-      if (item?.ancestorsEnabled) item.node.selected = !item.node.selected;
-    } else if (e.key === "h") {
-      const item = rows[current];
-      if (item?.node.children.length && !state.collapsedIds.includes(item.node.id)) state.collapsedIds.push(item.node.id);
-    } else if (e.key === "l") {
-      state.collapsedIds = state.collapsedIds.filter((id) => id !== rows[current]?.node.id);
-    } else if (e.key === "K" || e.key === "J") {
-      const item = rows[current];
-      if (item?.ancestorsEnabled) {
-        const delta = e.key === "K" ? -1 : 1;
-        const target = item.idx + delta;
-        if (target >= 0 && target < item.siblings.length) {
-          [item.siblings[item.idx], item.siblings[target]] = [item.siblings[target], item.siblings[item.idx]];
-        }
-      }
-    } else return;
-    pendingG = false;
-    e.preventDefault();
-    if (nextIndex !== current && rows[nextIndex]) state.setupCursorId = rows[nextIndex].node.id;
-    render();
-    requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
-  });
-}
-
-function toggleCollapsed(id) {
-  state.collapsedIds = state.collapsedIds.includes(id)
-    ? state.collapsedIds.filter((item) => item !== id)
-    : [...state.collapsedIds, id];
-  render();
-}
-
-function renderSetupTools() {
-  const tools = container.createDiv({ cls: "rr-setup-tools" });
-  const top = tools.createDiv({ cls: "rr-tools-row" });
-  const search = top.createEl("input", {
-    cls: "rr-input rr-task-search",
-    attr: { type: "search", placeholder: "Search tasks…  (Vim: /)" },
-  });
-  search.value = state.taskQuery;
-  search.addEventListener("input", () => {
-    state.taskQuery = search.value;
-    render();
-    requestAnimationFrame(() => {
-      const next = container.querySelector(".rr-task-search");
-      if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length); }
-    });
-  });
-  const leaves = enabledLeaves(state.tasks);
-  const estimate = leaves.reduce((sum, leaf) => sum + leaf.estimateMs, 0);
-  top.createSpan({ cls: "rr-summary", text: `${leaves.length} leaf task${leaves.length === 1 ? "" : "s"} · ${formatDuration(estimate)}` });
-
-  const actions = tools.createDiv({ cls: "rr-tools-row" });
-  const matchingNodes = () => visibleSetupRows().filter((row) => row.selfMatches).map((row) => row.node);
-  const selectionNodes = () => state.taskQuery.trim() ? matchingNodes() : state.tasks;
-  const structureNodes = () => state.taskQuery.trim() ? matchingNodes() : flatten(state.tasks);
-  const selectBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Enable" });
-  selectBtn.addEventListener("click", () => { selectionNodes().forEach((node) => { node.selected = true; }); render(); });
-  const clearBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Disable" });
-  clearBtn.addEventListener("click", () => { selectionNodes().forEach((node) => { node.selected = false; }); render(); });
-  const expandBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Expand" });
-  expandBtn.addEventListener("click", () => {
-    const ids = new Set(structureNodes().map((node) => node.id));
-    state.collapsedIds = state.collapsedIds.filter((id) => !ids.has(id));
-    render();
-  });
-  const collapseBtn = actions.createEl("button", { cls: "rr-tool-btn", text: "Collapse" });
-  collapseBtn.addEventListener("click", () => {
-    state.collapsedIds = [...new Set([
-      ...state.collapsedIds,
-      ...structureNodes().filter((node) => node.children.length).map((node) => node.id),
-    ])];
-    render();
-  });
-  const resetBtn = actions.createEl("button", { cls: "rr-tool-btn rr-reset-btn", text: "Reset" });
-  resetBtn.addEventListener("click", () => {
-    state.taskQuery = "";
-    state.collapsedIds = [];
-    state.setupCursorId = null;
-    recomputeTasksForSection();
-    render();
-  });
-}
-
 function renderSetup() {
   container.createEl("h3", { text: "Run a routine" });
 
@@ -1096,9 +767,6 @@ function renderSetup() {
     return;
   }
 
-  renderSetupTools();
-  renderTaskList();
-
   const selectedCount = enabledLeaves(state.tasks).length;
   const startBtn = container.createEl("button", {
     cls: "rr-btn rr-btn-primary",
@@ -1121,10 +789,17 @@ function renderSetup() {
     state.completedCount = 0;
     state.screen = "run";
     hydrateSessions();
-    startTimer();
+    activateCurrentSession();
     render();
     await queueSave();
   }));
+
+  RRE.renderSelection(container, {
+    state,
+    tasks: state.tasks,
+    render,
+    onReset: recomputeTasksForSection,
+  });
 }
 
 async function selectFile(file) {
@@ -1170,107 +845,30 @@ function renderRun() {
   const session = currentSession();
   const leaves = enabledLeaves(state.runTasks);
   const activeIndex = leaves.findIndex((leaf) => leaf.id === state.activeLeafId);
-
-  const header = container.createDiv({ cls: "rr-header" });
   const runLabel = currentSectionLabel();
-  header.createDiv({
-    cls: "rr-progress-label",
-    text: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
-  });
-  const stopBtn = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
-  stopBtn.addEventListener("click", () => enqueueAction(stopRoutine));
-
-  const card = container.createDiv({ cls: "rr-card" });
-  const crumbs = card.createDiv({ cls: "rr-task-text" });
   const path = taskPath(map.get(state.activeLeafId), map);
-  RRE.renderBreadcrumbs(crumbs, path, task.line, (line, part) => enqueueAction(() => focusTask(part.id)), false);
-  card.createDiv({ cls: "rr-est", text: `Estimated: ${formatDuration(task.estimateMs)}` });
-
-  if (task.goalCount != null) {
-    const countRow = card.createDiv({ cls: "rr-count-row" });
-    const minusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "−" });
-    let valueEl = countRow.createSpan({ cls: "rr-count-value", text: String(session.count) });
-    countRow.createSpan({ cls: "rr-count-sep", text: "/" });
-    countRow.createSpan({ cls: "rr-count-goal", text: String(task.goalCount) });
-    const plusBtn = countRow.createEl("button", { cls: "rr-btn rr-count-btn", text: "+" });
-
-    function setCount(n) {
-      session.count = Math.max(0, n);
-      valueEl.textContent = String(session.count);
-      scheduleCountSave();
-    }
-
-    function startEdit() {
-      const input = document.createElement("input");
-      input.type = "number";
-      input.className = "rr-count-input";
-      input.value = String(session.count);
-      valueEl.replaceWith(input);
-      input.focus();
-      input.select();
-      const commit = () => {
-        const n = parseInt(input.value, 10);
-        enqueueAction(() => setCount(isNaN(n) ? session.count : n));
-        input.replaceWith(valueEl);
-      };
-      input.addEventListener("blur", commit);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") input.blur();
-        if (e.key === "Escape") { input.value = String(session.count); input.blur(); }
-      });
-    }
-
-    minusBtn.addEventListener("click", () => enqueueAction(() => setCount(session.count - 1)));
-    plusBtn.addEventListener("click", () => enqueueAction(() => setCount(session.count + 1)));
-    valueEl.addEventListener("click", startEdit);
-  }
-
-  const timerRow = card.createDiv({ cls: "rr-timer-row" });
-  refs.timerEl = timerRow.createDiv({ cls: "rr-timer", text: "0:00" });
-
-  const bar = card.createDiv({ cls: "rr-bar" });
-  refs.barFillEl = bar.createDiv({ cls: "rr-bar-fill" });
-
-  const btnRow = card.createDiv({ cls: "rr-btn-row" });
-  const pauseBtn = btnRow.createEl("button", { cls: "rr-btn", text: session.startedAt === null ? "Resume" : "Pause" });
-  pauseBtn.addEventListener("click", () => enqueueAction(async () => {
-    const now = Date.now();
-    if (session.startedAt === null) {
-      session.startedAt = now;
-    } else {
-      settleSession(session, now);
-    }
-    pauseBtn.textContent = session.startedAt === null ? "Resume" : "Pause";
-    updateTimerDisplay();
-    await queueSave();
-  }));
-  const skipBtn = btnRow.createEl("button", { cls: "rr-btn", text: "Skip" });
-  skipBtn.addEventListener("click", () => enqueueAction(() => advance(false)));
-  const doneBtn = btnRow.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
-  doneBtn.addEventListener("click", () => enqueueAction(() => completeCurrentTask()));
-  doneBtn.setAttribute("title", "Right-click to choose a Tasks status");
-  doneBtn.addEventListener("contextmenu", async (e) => {
-    e.preventDefault();
-    await showStatusMenu(doneBtn);
-  });
-
   const retired = new Set(state.retiredIds);
   flatten([task]).forEach((node) => retired.add(node.id));
   const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
-  container.createDiv({
-    cls: "rr-next",
-    text: next ? `Next: ${pathLabel(next, map)} (${formatDuration(next.estimateMs)})` : "This is the last remaining leaf task.",
+  const view = RRE.renderRunCard(container, {
+    app, task, session, path, redrawIntervalMs: REDRAW_INTERVAL_MS,
+    progressLabel: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
+    nextLabel: next ? `Next: ${pathLabel(next, map)} (${formatDuration(next.estimateMs)})` : null,
+    onStop: () => enqueueAction(stopRoutine),
+    onFocus: part => enqueueAction(() => focusTask(part.id)),
+    onStateChange: scheduleCountSave,
+    onPause: () => { if (session.startedAt === null) session.startedAt = Date.now(); else settleSession(session); enqueueAction(queueSave); },
+    onSkip: () => enqueueAction(() => advance(false)),
+    onDone: status => enqueueAction(() => completeCurrentTask(status)),
   });
-
-  updateTimerDisplay();
+  refs.sharedDispose = view.dispose;
 }
 
 function renderDone() {
   stopTimer();
-  container.createDiv({ cls: "rr-header" }).createEl("h3", { text: "Routine complete 🎉" });
-  container.createDiv({ text: `${state.processedLeafCount} of ${state.totalLeafCount} leaf tasks processed; ${state.completedCount} Done action${state.completedCount === 1 ? "" : "s"}.` });
-  const again = container.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Run another note" });
-  again.addEventListener("click", () => {
+  RRE.renderSummary(container, { processedCount: state.processedLeafCount, totalLeafCount: state.totalLeafCount, completedCount: state.completedCount }, {
+    actionLabel: "Run another note",
+    onAction: () => {
     state.file = null;
     state.noteQuery = "";
     state.headings = [];
@@ -1281,6 +879,7 @@ function renderDone() {
     state.sectionIdx = "";
     state.screen = "setup";
     render();
+    },
   });
 }
 
@@ -1293,52 +892,6 @@ async function focusTask(id) {
   activateCurrentSession();
   render();
   await queueSave();
-}
-
-async function configuredTaskStatuses() {
-  return RRE.configuredTaskStatuses(app);
-}
-
-async function showStatusMenu(anchor) {
-  statusMenuEl?.remove();
-  const statuses = await configuredTaskStatuses();
-  if (state.screen !== "run" || !document.body.contains(anchor)) return;
-  const menu = document.body.createDiv({ cls: "rr-status-menu" });
-  statusMenuEl = menu;
-  menu.tabIndex = -1;
-  statuses.forEach((status) => {
-    const option = menu.createEl("button", { cls: "rr-status-option" });
-    option.createSpan({ cls: "rr-status-symbol", text: `[${status.symbol}]` });
-    option.createSpan({ text: status.name || "Unnamed" });
-    if (status.type) option.createSpan({ cls: "rr-status-type", text: status.type.replaceAll("_", " ") });
-    option.addEventListener("click", () => {
-      menu.remove();
-      statusMenuEl = null;
-      enqueueAction(() => completeCurrentTask(status.symbol === "x" ? null : status));
-    });
-  });
-  const rect = anchor.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const left = Math.max(4, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 4));
-  const top = rect.top >= menuRect.height + 6
-    ? rect.top - menuRect.height - 6
-    : Math.min(rect.bottom + 6, window.innerHeight - menuRect.height - 4);
-  menu.style.left = `${left}px`;
-  menu.style.top = `${Math.max(4, top)}px`;
-  menu.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      menu.remove();
-      statusMenuEl = null;
-      anchor.focus();
-    }
-  });
-  menu.addEventListener("focusout", () => setTimeout(() => {
-    if (!menu.contains(document.activeElement)) {
-      menu.remove();
-      if (statusMenuEl === menu) statusMenuEl = null;
-    }
-  }, 0));
-  menu.focus();
 }
 
 async function advance(wasDone) {
@@ -1405,48 +958,11 @@ async function completeCurrentTask(selectedStatus = null) {
     }
   }
 
-  const tasksApi = app.plugins.plugins["obsidian-tasks-plugin"]?.apiV1;
-  const terminalTypes = new Set(["DONE", "CANCELLED", "NON_TASK"]);
-  const useTasksCompletion = selectedStatus === null || terminalTypes.has(selectedStatus.type);
-  let replacement;
-  if (useTasksCompletion && tasksApi && typeof tasksApi.executeToggleTaskDoneCommand === "function") {
-    replacement = tasksApi.executeToggleTaskDoneCommand(rawLine, state.file.path);
-  } else if (selectedStatus !== null) {
-    replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${selectedStatus.symbol}${p3}${p4}`);
-  } else {
-    replacement = rawLine.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}x${p3}${p4}`);
-  }
-
-  if (selectedStatus !== null && useTasksCompletion) {
-    let pluginSettings = null;
-    try {
-      pluginSettings = await app.plugins.plugins["obsidian-tasks-plugin"]?.loadData?.();
-    } catch (e) {}
-    const date = window.moment().format("YYYY-MM-DD");
-    replacement = replacement.split("\n").map((line) => {
-      const match = line.match(TASK_LINE_RE);
-      if (!match || match[2] === " ") return line;
-      let changed = line.replace(TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${selectedStatus.symbol}${p3}${p4}`);
-      changed = changed.replace(/\s+[✅❌]\s*\d{4}-\d{2}-\d{2}/gu, "").replace(/\s+$/, "");
-      if (selectedStatus.type === "DONE" && pluginSettings?.setDoneDate !== false) changed += ` ✅ ${date}`;
-      if (selectedStatus.type === "CANCELLED" && pluginSettings?.setCancelledDate !== false) changed += ` ❌ ${date}`;
-      return changed;
-    }).join("\n");
-  }
-
-  const elapsedLabel = formatDuration(elapsedForSession(session));
-  const resultText = task.goalCount != null ? `🏁 ${elapsedLabel} 🥅 ${session.count}` : `🏁 ${elapsedLabel}`;
-  const replacementLines = replacement.split("\n").map((line) => {
-    const lm = line.match(TASK_LINE_RE);
-    if (lm && lm[2] !== " ") {
-      return insertBeforeTasksMetadata(line, resultText);
-    }
-    return line;
+  // Both hosts use the same Tasks-plugin transformation and 🏁/🥅 result metadata.
+  const nextContent = await RRE.completeTask(app, state.file, content, task.line, selectedStatus, {
+    elapsedMs: elapsedForSession(session), count: session.count, goalCount: task.goalCount,
   });
-  lines.splice(task.line, 1, ...replacementLines);
-  await app.vault.modify(state.file, lines.join("\n"));
-
-  const shift = replacementLines.length - 1;
+  const shift = nextContent.split(/\r?\n/).length - lines.length;
   if (shift !== 0) {
     flatten(state.runTasks).forEach((t) => { if (t.line > task.line) t.line += shift; });
   }
@@ -1515,11 +1031,6 @@ async function initializeFromCache() {
       state.cacheError = null;
       state.cacheWritable = true;
       render();
-      if (state.screen === "run") {
-        localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-        state.intervalId = localIntervalId;
-        requestWakeLock();
-      }
       return;
     }
 
@@ -1533,11 +1044,6 @@ async function initializeFromCache() {
       // Preserve the persisted paused/running state. A non-null started-at
       // naturally accounts for time spent closed; intervals only repaint.
       render();
-      if (state.screen === "run") {
-        localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-        state.intervalId = localIntervalId;
-        requestWakeLock();
-      }
       // Persist the successfully restored subset once so stale/ambiguous task
       // records do not warn again on every Dataview rerun.
       if (routinePruned) queueSave();
@@ -1554,11 +1060,6 @@ async function initializeFromCache() {
     state.cacheWritable = false;
     state.cacheError = `${CACHE_NAME} was not loaded: ${error.message}. Fix its YAML and rerun this block; it will not be overwritten.`;
     render();
-    if (state.screen === "run") {
-      localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-      state.intervalId = localIntervalId;
-      requestWakeLock();
-    }
   }
 }
 
@@ -1571,31 +1072,19 @@ function syncViewAttachment() {
   if (isAttached === containerAttached) return;
   containerAttached = isAttached;
   if (!isAttached) {
-    statusMenuEl?.remove();
-    statusMenuEl = null;
     // Keep timestamp-based session time running, but suspend work that only
     // serves this view while Obsidian has its DOM detached.
     stopTimer();
     return;
   }
-  disposed = false;
-  if (state.screen === "run" && !localIntervalId) {
-    tick();
-    localIntervalId = setInterval(tick, REDRAW_INTERVAL_MS);
-    state.intervalId = localIntervalId;
-    requestWakeLock();
-  }
+  if (state.screen === "run") render();
 }
 
 const watchdog = new MutationObserver(syncViewAttachment);
 watchdog.observe(document.body, { childList: true, subtree: true });
 
 const cleanupView = () => {
-  disposed = true;
   watchdog.disconnect();
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
-  statusMenuEl?.remove();
-  statusMenuEl = null;
   stopTimer();
   if (window[VIEW_LIFECYCLE_KEY] === cleanupView) delete window[VIEW_LIFECYCLE_KEY];
 };
