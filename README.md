@@ -7,6 +7,8 @@ This directory contains two deliberately separate runners:
 - `routine-runner.md` is the thin configuration/entry note for the checkbox routine/countdown runner. Its Obsidian adapter is `routine-runner-ui.js`, and its testable parsing, tree, timing, and formatting logic is `routine-runner.js`. `routine-runner-embed.js` is the shared nested-task component used by both runners. Schedule Runner does not share Routine Runner's active session or cache state.
 - `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`. Embedded task navigation/timers are stored separately in `schedule-runner-state.yaml`; they never share `routine-runner-state.yaml`, and Actual remains authoritative for schedule-block state.
 
+Select the Daily Note date at the top of Schedule Runner. It initially defaults to today in UTC and is saved in `schedule-runner-state.yaml`, so reloads and UTC midnight keep the selected day. The selected date controls which note receives Actual entries; their timestamps still use the current UTC time. Daily Notes folder and filename settings are respected.
+
 All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
 
 ## Timeline grammar
@@ -33,6 +35,10 @@ The runner enforces one active main ancestor-to-leaf chain. A Start click on a n
 Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs receive random ASCII-only IDs in one guarded write; existing IDs are preserved, generated collisions are avoided, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<random-plan-token>-<occurrence>`. The runner can also create running, unplanned contexts with standalone random ASCII IDs.
 
 Existing or manually entered Actual lines without IDs are repaired on render as well. This keeps state reconstruction safe and prevents generated boundary IDs such as `^null-end`.
+
+## TODO
+
+- Narrow automatic Actual-ID assignment. Keep IDs on Schedule Runner-generated Actual blocks and assign them to manually entered blocks only when they are active or become associated with an embedded routine. Completed standalone manual intervals such as `- 1300-1400 Lunch` should remain untouched, since their timestamps are sufficient for reconstruction and display. Preserve stable IDs wherever End, Pause/Resume, source-line recovery, or routine-session identity depends on them.
 
 ## Classification expressions
 

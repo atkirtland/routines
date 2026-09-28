@@ -21,8 +21,13 @@ try {
   const cfg = daily?.options || {};
   const format = cfg.format || "YYYY-MM-DD";
   const folder = (cfg.folder || "").replace(/\/$/, "");
-  const dailyPath = `${folder ? folder + "/" : ""}${moment.utc().format(format)}.md`;
-  let file = app.vault.getAbstractFileByPath(dailyPath);
+  let selectedDate = moment.utc().format("YYYY-MM-DD");
+  const pathForDate = date => `${folder ? folder + "/" : ""}${moment.utc(date, "YYYY-MM-DD", true).format(format)}.md`;
+  let dailyPath, file;
+  const selectDailyNote = () => {
+    dailyPath = pathForDate(selectedDate);
+    file = app.vault.getAbstractFileByPath(dailyPath);
+  };
 
   const root = dv.container;
   root.empty(); root.addClass("sb-root");
@@ -109,6 +114,7 @@ try {
   if (stateFile) {
     try {
       const saved = JSON.parse(await app.vault.read(stateFile));
+      if (typeof saved.selectedDate === "string" && moment.utc(saved.selectedDate, "YYYY-MM-DD", true).isValid()) selectedDate = saved.selectedDate;
       if (saved["schedule-runner-state-version"] === 2 && saved.sessions && typeof saved.sessions === "object") {
         embeddedRuns.states = Object.fromEntries(Object.entries(saved.sessions).map(([key, value]) => [key, RRE.deserializeSession(value)]));
         embeddedRuns.legacy = saved.legacy || {};
@@ -121,7 +127,9 @@ try {
       new Notice(`Schedule runner state was not loaded: ${error.message}`);
     }
   }
+  selectDailyNote();
   const embeddedStateSnapshot = () => `${JSON.stringify({ "schedule-runner-state-version": 2,
+    selectedDate,
     sessions: Object.fromEntries(Object.entries(embeddedRuns.states).map(([key, value]) => [key, RRE.serializeSession(value)])),
     ...(Object.keys(embeddedRuns.legacy || {}).length ? { legacy: embeddedRuns.legacy } : {}),
   }, null, 2)}\n`;
@@ -223,6 +231,18 @@ try {
     embeddedCoordinator.disposers.splice(0).forEach(dispose => dispose());
     [...root.children].filter(x => x !== style).forEach(x => x.remove());
     const title = root.createEl("div", { cls: "sb-row" });
+    const dateLabel = title.createEl("label", { text: "Daily note " });
+    const dateInput = dateLabel.createEl("input", { type: "date", value: selectedDate });
+    dateInput.setAttribute("aria-label", "Daily note date");
+    dateInput.onchange = async () => {
+      const value = dateInput.value;
+      if (!moment.utc(value, "YYYY-MM-DD", true).isValid()) { dateInput.value = selectedDate; return; }
+      dateInput.disabled = true;
+      clearTimeout(embeddedCoordinator.saveTimer);
+      selectedDate = value;
+      await writeEmbeddedState(embeddedStateSnapshot());
+      await enqueueEmbedded(async () => { selectDailyNote(); await render(); });
+    };
     title.createEl("strong", { text: `UTC · ${dailyPath}` });
     title.appendChild(button("Refresh", render));
     const undo = window[UNDO_KEY];
@@ -243,8 +263,8 @@ try {
         await app.vault.modify(file, result.text);
       }
       window[UNDO_KEY] = null; await render();
-    }, !undo || Date.now() > undo.expires));
-    if (!file) { root.createEl("div", { text: "Today’s Daily Note does not exist. Starting a block will create it.", cls: "sb-muted" }); return; }
+    }, !undo || undo.path !== dailyPath || Date.now() > undo.expires));
+    if (!file) { root.createEl("div", { text: "The selected Daily Note does not exist. Create it to add a Plan.", cls: "sb-muted" }); return; }
     let text = await app.vault.read(file);
     const repairedActual = SB.ensureActualIds(text);
     if (repairedActual.errors.length) { repairedActual.errors.forEach(message => root.createEl("div", { text: message, cls: "sb-error" })); return; }
@@ -306,7 +326,7 @@ try {
       }
     }
     root.createEl("h3", { text: "Plan" });
-    if (plan.start < 0) root.createEl("div", { text: "Add a ## Plan section to today’s note.", cls: "sb-muted" });
+    if (plan.start < 0) root.createEl("div", { text: "Add a ## Plan section to the selected note.", cls: "sb-muted" });
     const nowHHMM = SB.hhmm(new Date());
     for (const e of plan.entries.filter(x => x.role !== "boundary" && !dismissed.has(x.id) && !completed.has(x.id?.replace(/^p-/, "")))) {
       const card = root.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
@@ -345,6 +365,7 @@ try {
       await write(text, SB.appendActual(text, `- ${SB.hhmm(new Date())}- ${body} ^${id}`));
     }));
   }
+  await writeEmbeddedState(embeddedStateSnapshot());
   await render();
 } catch (error) {
   dv.el("div", error.stack || error.message, { cls: "sb-error" });
