@@ -230,6 +230,7 @@ function cacheObject() {
       section: state.sectionIdx === "" ? null : currentSectionLabel(),
       "section-line-hint": state.sectionIdx === "" ? null : state.headings[Number(state.sectionIdx)]?.line,
       options: { "leave-unchecked": state.leaveUnchecked },
+      timing: state.timing,
       progress: {
         "completed-count": state.completedCount,
         "total-leaf-count": state.totalLeafCount,
@@ -492,6 +493,7 @@ function ledgerEntryMatchesRecord(entry, record) {
 }
 
 async function restoreRoutine(saved) {
+  state.timing = saved.timing || {};
   const file = app.vault.getAbstractFileByPath(saved?.["source-file"] ?? "");
   if (!file) throw new Error(`routine source file not found: ${saved?.["source-file"] ?? "(missing)"}`);
   state.file = file;
@@ -784,6 +786,7 @@ function renderSetup() {
   startBtn.addEventListener("click", () => enqueueAction(async () => {
     // Persist only enabled leaves and the ancestors needed to retain their paths.
     state.runTasks = selectedRoutineTree(state.tasks);
+    state.timing = {};
     const leaves = enabledLeaves(state.runTasks);
     state.index = 0;
     state.activeLeafId = leaves[0].id;
@@ -858,9 +861,11 @@ function renderRun() {
   const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
   const view = RRE.renderRunCard(container, {
     app, task, session, path, redrawIntervalMs: REDRAW_INTERVAL_MS,
+    timing: state.timing || (state.timing = {}),
+    onRefresh: () => enqueueAction(async () => { render(); await queueSave(); }),
     progressLabel: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
     nextLabel: next ? `Next: ${pathLabel(next, map)} (${formatDuration(next.estimateMs)})` : null,
-    onStop: () => enqueueAction(stopRoutine),
+    onStop: () => enqueueAction(async () => { RRE.setRunnerMode(state.timing, "stopped"); await stopRoutine(); }),
     onFocus: part => enqueueAction(() => focusTask(part.id)),
     onStateChange: scheduleCountSave,
     onPause: () => { if (session.startedAt === null) session.startedAt = Date.now(); else settleSession(session); enqueueAction(queueSave); },
@@ -881,7 +886,8 @@ function renderRun() {
 
 function renderDone() {
   stopTimer();
-  RRE.renderSummary(container, { processedCount: state.processedLeafCount, totalLeafCount: state.totalLeafCount, completedCount: state.completedCount }, {
+  if (state.timing) RRE.setRunnerMode(state.timing, "stopped");
+  RRE.renderSummary(container, { ...(state.timing ? RRE.runnerTotals(state.timing) : {}), processedCount: state.processedLeafCount, totalLeafCount: state.totalLeafCount, completedCount: state.completedCount }, {
     actionLabel: "Run another note",
     onAction: () => {
     state.file = null;

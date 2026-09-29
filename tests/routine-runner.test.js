@@ -3,6 +3,29 @@ const path = require("path");
 const R = require(path.join(__dirname, "..", "routine-runner.js"));
 const E = require(path.join(__dirname, "..", "routine-runner-embed.js"));
 
+// Task pause counts as unassigned time; runner pause excludes breaks and
+// preserves the task's previous running/paused state across serialization.
+{
+  const timing = {};
+  const session = { startedAt: 1000, elapsedBeforeStartMs: 0 };
+  E.setRunnerMode(timing, "task", 1000);
+  E.toggleRunnerPause(timing, session, 4000);
+  assert.equal(session.startedAt, null);
+  assert.equal(session.elapsedBeforeStartMs, 3000);
+  assert.deepEqual(E.runnerTotals(timing, 9000), { elapsedMs: 3000, unassignedMs: 0 });
+  const restored = E.deserializeSession(E.serializeSession({ timing, sessions: { task: session } }));
+  E.toggleRunnerPause(restored.timing, restored.sessions.task, 10000);
+  assert.equal(restored.sessions.task.startedAt, 10000);
+  E.setRunnerMode(restored.timing, "unassigned", 12000);
+  restored.sessions.task.startedAt = null;
+  E.toggleRunnerPause(restored.timing, restored.sessions.task, 15000);
+  E.toggleRunnerPause(restored.timing, restored.sessions.task, 20000);
+  assert.equal(restored.sessions.task.startedAt, null);
+  assert.equal(restored.timing.mode, "unassigned");
+  E.setRunnerMode(restored.timing, "stopped", 22000);
+  assert.deepEqual(E.runnerTotals(restored.timing, 30000), { elapsedMs: 10000, unassignedMs: 5000 });
+}
+
 assert.equal(R.parseEstimateMs("Stretch"), 0);
 assert.equal(R.parseEstimateMs("Stretch ⏱️ 10:05"), 605000);
 assert.equal(R.parseEstimateMs("Long ⏱️ 1:02:03"), 3723000);

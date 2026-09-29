@@ -81,3 +81,15 @@ node tests/routine-runner.test.js
 Task Done changes the canonical task checkbox only; it never rewrites an Actual occurrence. Schedule switching and context End are independent of routine completion and routine Pause/Resume.
 
 When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, editable count goals, Pause/Resume, Skip, Done, the right-click Tasks-status menu, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. Embedded state is persisted by canonical task link and its timer requests a screen wake lock. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, status discovery, result formatting, and completion, while retaining independent timer state.
+# Runner pauses
+
+Both runners share two pause controls. The task card's Pause stops only the task
+timer; time continues as **unassigned time** (for unwritten tasks). **Pause runner**
+beside Stop marks a break and freezes task and unassigned time. Resume runner
+restores the task's previous running/paused state. Break state and timing are
+saved in the host's state file. Stop still returns to selection.
+
+The summary's total includes task and unassigned time, excludes breaks, and shows
+unassigned time separately. Task-level `🏁` results still contain only task time.
+Schedule timers remain independent. Unassigned time before this feature was
+installed cannot be reconstructed.

@@ -192,6 +192,35 @@
     return Object.values(state?.sessions || {}).reduce((sum, session) => sum + requireCore().elapsedForSession(session, now), 0);
   }
 
+  function setRunnerMode(timing, mode, now = Date.now()) {
+    if (timing.since != null && (timing.mode === "task" || timing.mode === "unassigned")) {
+      const field = timing.mode === "task" ? "taskMs" : "unassignedMs";
+      timing[field] = (timing[field] || 0) + Math.max(0, now - timing.since);
+    }
+    timing.mode = mode;
+    timing.since = now;
+  }
+
+  function runnerTotals(timing, now = Date.now()) {
+    const snapshot = { ...timing };
+    setRunnerMode(snapshot, snapshot.mode, now);
+    return { elapsedMs: (snapshot.taskMs || 0) + (snapshot.unassignedMs || 0), unassignedMs: snapshot.unassignedMs || 0 };
+  }
+
+  function toggleRunnerPause(timing, session, now = Date.now()) {
+    if (timing.mode === "break") {
+      if (timing.resumeTask) session.startedAt = now;
+      setRunnerMode(timing, timing.resumeTask ? "task" : "unassigned", now);
+    } else {
+      timing.resumeTask = session.startedAt != null;
+      if (timing.resumeTask) {
+        session.elapsedBeforeStartMs = (session.elapsedBeforeStartMs || 0) + Math.max(0, now - session.startedAt);
+        session.startedAt = null;
+      }
+      setRunnerMode(timing, "break", now);
+    }
+  }
+
   function runningSession(state) {
     return state?.screen === "run" && Object.values(state.sessions || {}).some(session => session?.startedAt != null);
   }
@@ -364,10 +393,20 @@
     const core = requireCore();
     const task = options.task;
     const session = options.session;
+    const timing = options.timing || {};
+    if (timing.mode !== "break") setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task");
     const header = container.createDiv({ cls: "rr-header rr-embedded-header" });
     header.createDiv({ cls: "rr-progress-label", text: options.progressLabel });
     const stop = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
     stop.addEventListener("click", () => options.onStop?.());
+    const runnerPause = header.createEl("button", { cls: "rr-btn", text: timing.mode === "break" ? "Resume runner" : "Pause runner" });
+    runnerPause.addEventListener("click", () => {
+      toggleRunnerPause(timing, session);
+      options.onStateChange?.();
+      dispose();
+      options.onRefresh?.();
+    });
+    header.createDiv({ cls: "rr-est", text: timing.mode === "break" ? "On a break — runner paused" : "" });
 
     const card = container.createDiv({ cls: "rr-card" });
     const crumbs = card.createDiv({ cls: "rr-task-text rr-embedded-crumbs" });
@@ -409,7 +448,7 @@
         event.stopPropagation();
       });
     };
-    renderBreadcrumbs(crumbs, options.path, task.line, (_line, node) => options.onFocus?.(node), false, options.onComment ? openComment : null);
+    renderBreadcrumbs(crumbs, options.path, task.line, (_line, node) => { if (timing.mode !== "break") options.onFocus?.(node); }, false, options.onComment ? openComment : null);
     card.createDiv({ cls: "rr-est", text: `Estimated: ${core.formatDuration(task.estimateMs)}` });
     const changed = () => options.onStateChange?.();
     if (task.goalCount != null) {
@@ -445,18 +484,21 @@
     repaint();
     const interval = setInterval(repaint, options.redrawIntervalMs || 1000);
     let wakeLock = null, disposed = false;
-    if (typeof navigator !== "undefined" && "wakeLock" in navigator) navigator.wakeLock.request("screen").then(lock => { if (disposed) lock.release().catch(() => {}); else wakeLock = lock; }).catch(() => {});
+    if (timing.mode !== "break" && typeof navigator !== "undefined" && "wakeLock" in navigator) navigator.wakeLock.request("screen").then(lock => { if (disposed) lock.release().catch(() => {}); else wakeLock = lock; }).catch(() => {});
     const dispose = () => { if (disposed) return; disposed = true; closeComment(); clearInterval(interval); wakeLock?.release().catch(() => {}); wakeLock = null; };
     const buttons = card.createDiv({ cls: "rr-btn-row" });
     const pause = buttons.createEl("button", { cls: "rr-btn", text: session.startedAt == null ? "Resume" : "Pause" });
-    pause.addEventListener("click", () => { options.onPause?.(); pause.textContent = session.startedAt == null ? "Resume" : "Pause"; repaint(); changed(); });
+    pause.disabled = timing.mode === "break";
+    pause.title = "Pause only this task; runner time continues as unassigned time";
+    pause.addEventListener("click", () => { options.onPause?.(); setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task"); pause.textContent = session.startedAt == null ? "Resume" : "Pause"; repaint(); changed(); });
     const skip = buttons.createEl("button", { cls: "rr-btn", text: "Skip" });
     skip.addEventListener("click", () => { dispose(); options.onSkip?.(); });
     const done = buttons.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
+    skip.disabled = done.disabled = timing.mode === "break";
     const finish = status => { done.disabled = true; Promise.resolve(options.onDone?.(status)).catch(error => { done.disabled = false; throw error; }); };
     done.addEventListener("click", () => finish(null));
     done.title = "Right-click to choose a Tasks status";
-    done.addEventListener("contextmenu", event => { event.preventDefault(); showStatusMenu(options.app, done, finish); });
+    done.addEventListener("contextmenu", event => { event.preventDefault(); if (timing.mode !== "break") showStatusMenu(options.app, done, finish); });
     container.createDiv({ cls: "rr-next", text: options.nextLabel || "This is the last remaining leaf task." });
     return { dispose, repaint };
   }
@@ -464,6 +506,7 @@
   function renderSummary(container, summary, options = {}) {
     container.createDiv({ cls: "rr-header" }).createEl("h3", { text: "Routine complete 🎉" });
     container.createDiv({ cls: "rr-embedded-progress", text: `${summary.elapsedMs != null ? `${requireCore().formatDuration(summary.elapsedMs)} total · ` : ""}${summary.processedCount} of ${summary.totalLeafCount} leaf tasks processed · ${summary.completedCount} completed` });
+    if (summary.unassignedMs != null) container.createDiv({ cls: "rr-est", text: `${requireCore().formatDuration(summary.unassignedMs)} unassigned · breaks excluded` });
     if (options.actionLabel) {
       const action = container.createEl("button", { cls: "rr-btn rr-btn-primary", text: options.actionLabel });
       action.addEventListener("click", options.onAction);
@@ -507,7 +550,7 @@
       }
     };
     const session = state.sessions[state.focusKey] || (state.sessions[state.focusKey] = {
-      elapsedBeforeStartMs: 0, startedAt: Date.now(), count: 0,
+      elapsedBeforeStartMs: 0, startedAt: state.timing?.mode === "break" ? null : Date.now(), count: 0,
     });
     const advance = () => {
       settle(session);
@@ -538,10 +581,13 @@
     const next = leaves.slice(activeIndex + 1).find(node => !retired.has(keyOf(node)));
     const view = renderRunCard(container, {
       app: options.app, task: focus, session, path: activePath,
+      timing: state.timing || (state.timing = { taskMs: sessionElapsedTotal(state) }),
+      onRefresh: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
       redrawIntervalMs: options.redrawIntervalMs,
       progressLabel: `Leaf ${Math.max(1, (state.processedCount || 0) + 1)} of ${state.totalLeafCount || leaves.length}`,
       nextLabel: next ? `Next: ${core.taskPath(next, map).map(node => node.display).join(" → ")} (${core.formatDuration(next.estimateMs)})` : null,
       onStop: () => {
+        setRunnerMode(state.timing, "stopped");
         Object.values(state.sessions || {}).forEach(value => settle(value));
         state.screen = "select"; state.focusKey = null; state.activeLeafKey = null;
         options.onStateChange?.(state); options.onStop?.(state);
@@ -620,6 +666,7 @@
         // Starting from the selection screen begins a new run. Do not inherit
         // paused clocks left by a prior run that was stopped back to selection.
         state.sessions = {};
+        state.timing = {};
         state.focusKey = null;
         state.activeLeafKey = null;
         state.totalLeafCount = selectedCount;
@@ -641,7 +688,10 @@
     }
 
     if (state.screen === "summary" || !leaves.some(node => !new Set(state.retired).has(keyOf(node)))) {
-      if (!state.summary) state.summary = { elapsedMs: sessionElapsedTotal(state), processedCount: state.processedCount || 0, completedCount: state.completedCount || 0, totalLeafCount: state.totalLeafCount || 0 };
+      if (!state.summary) {
+        if (state.timing) setRunnerMode(state.timing, "stopped");
+        state.summary = { ...(state.timing ? runnerTotals(state.timing) : { elapsedMs: sessionElapsedTotal(state) }), processedCount: state.processedCount || 0, completedCount: state.completedCount || 0, totalLeafCount: state.totalLeafCount || 0 };
+      }
       state.screen = "summary"; notify();
       container.empty?.();
       renderSummary(container, state.summary, {
@@ -655,6 +705,7 @@
   }
 
   return { model, replacementForTask, completeTask, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+    setRunnerMode, runnerTotals, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
     lineForKey, renderRunner, renderSession };
