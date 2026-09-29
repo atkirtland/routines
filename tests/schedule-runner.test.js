@@ -198,8 +198,5 @@ assert.equal(S.validateActualIntervals(switched).ok, true);
 assert.doesNotMatch(switched, /scheduled-block-paused|scheduled-block-ended| — /);
 assert.match(switched, /## Later\nUntouched/);
 assert.throws(() => S.switchBlock(switched, switchEntries[4]), /main block/);
-assert.equal(S.cleanTaskText("- [ ] Eat fish ^961371"), "Eat fish");
-assert.equal(S.cleanTaskText("  - [x] 中文任务 #t/p ^任務-1"), "中文任务 #t/p");
-assert.equal(S.cleanTaskText("- Plain list item"), "Plain list item");
 
 console.log("schedule-runner: all tests passed");

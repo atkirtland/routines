@@ -26,10 +26,11 @@
     .rr-badge{color:var(--text-muted);font-size:.8em;background:var(--background-secondary);border-radius:4px;padding:1px 6px;white-space:nowrap}.rr-badge-group{display:flex;align-items:center;justify-content:flex-end;gap:.4em;padding-left:.6em}.rr-checkbox-cell{display:flex;align-items:center;justify-content:center;padding-left:.6em}.rr-reorder{display:flex;align-items:center;justify-content:center;gap:2px;padding-left:.6em}.rr-reorder-btn{line-height:1;font-size:.7em;padding:2px 6px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-reorder-btn:hover:not(:disabled){background:var(--interactive-hover)}.rr-reorder-btn:disabled{opacity:.3;cursor:default}
     .rr-empty{color:var(--text-muted);padding:8px 0}.rr-selection-header{display:flex;align-items:center;gap:.75em;margin-bottom:.6em}
     .rr-header{display:flex;align-items:center;justify-content:space-between;gap:.75em;margin-bottom:.5em}.rr-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:1em;background:var(--background-secondary)}
-    .rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est,.rr-next{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}
+    .rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}
     .rr-timer-row{text-align:center}.rr-timer{font-size:2.2em;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-normal)}.rr-timer.rr-overdue{color:var(--color-red,#e5534b)}.rr-bar{height:10px;border-radius:5px;background:var(--background-modifier-border);overflow:hidden;margin:.75em 0 1em}.rr-bar-fill{height:100%;width:0;background:var(--color-green,#4caf50);transition:width .2s linear,background-color .2s linear}.rr-bar-fill.rr-overdue{background:var(--color-red,#e5534b)}
     .rr-count-row{display:flex;align-items:center;justify-content:center;gap:.6em;margin:.75em 0 1em}.rr-count-btn{flex:none;width:2.4em;font-size:1.2em;padding:6px 0}.rr-count-value{font-size:1.8em;font-weight:700;min-width:1.4em;text-align:center;cursor:pointer;border-bottom:1px dashed var(--text-faint)}.rr-count-value:hover{color:var(--interactive-accent)}.rr-count-sep{color:var(--text-muted);font-size:1.4em}.rr-count-goal{color:var(--text-muted);font-size:1.4em;font-weight:600}.rr-count-input{font-size:1.8em;font-weight:700;width:3.2em;text-align:center;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal)}
-    .rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn:hover{background:var(--interactive-hover)}.rr-btn:disabled{opacity:.5;cursor:default}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent);border-color:var(--interactive-accent)}.rr-btn-primary:hover{background:var(--interactive-accent-hover)}.rr-btn-stop{flex:none;padding:4px 14px;font-size:.85em;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-stop:hover{background:var(--interactive-hover)}.rr-next{margin-top:.75em;margin-bottom:0;font-size:.9em}.rr-progress-label{font-weight:600}
+    .rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn:hover{background:var(--interactive-hover)}.rr-btn:disabled{opacity:.5;cursor:default}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent);border-color:var(--interactive-accent)}.rr-btn-primary:hover{background:var(--interactive-accent-hover)}.rr-btn-stop{flex:none;padding:4px 14px;font-size:.85em;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-stop:hover{background:var(--interactive-hover)}.rr-progress-label{font-weight:600}
+    .rr-run-tree{margin-top:.75em}.rr-run-tree .rr-review-list{max-height:12em;overflow-y:auto;overscroll-behavior:contain;background:var(--background-primary)}.rr-review-item-current>*{background:var(--background-modifier-hover);font-weight:600}.rr-review-item-processed>*{opacity:.55}.rr-review-item-processed .rr-review-label{text-decoration:line-through}.rr-undo-btn{white-space:nowrap}.rr-review-item-processed>.rr-reorder{opacity:1}.rr-review-item-locked input{cursor:not-allowed}
     .rr-status-menu{position:fixed;z-index:var(--layer-menu,1000);min-width:190px;max-height:60vh;overflow:auto;padding:4px;border:1px solid var(--background-modifier-border);border-radius:6px;background:var(--background-primary);box-shadow:var(--shadow-s)}.rr-status-option{display:flex;width:100%;gap:.6em;align-items:center;padding:6px 9px;border:0;border-radius:4px;background:transparent;color:var(--text-normal);text-align:left;cursor:pointer}.rr-status-option:hover,.rr-status-option:focus{background:var(--background-modifier-hover)}.rr-status-symbol{min-width:2.2em;font-family:var(--font-monospace)}.rr-status-type{margin-left:auto;color:var(--text-muted);font-size:.8em}
   `;
 
@@ -75,7 +76,7 @@
     return rawLine.replace(core.TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${symbol}${p3}${p4}`);
   }
 
-  async function completeTask(app, file, content, line, status = null, result = null) {
+  async function completeTaskTransaction(app, file, content, line, status = null, result = null) {
     const lines = content.split(/\r?\n/);
     const rawLine = lines[line];
     const api = app.plugins?.plugins?.["obsidian-tasks-plugin"]?.apiV1;
@@ -110,7 +111,36 @@
     lines.splice(line, 1, ...replacement.split("\n"));
     const next = lines.join("\n");
     await app.vault.modify(file, next);
-    return next;
+    return { content: next, undo: { start: line, beforeLines: [rawLine], afterLines: replacement.split("\n") } };
+  }
+
+  async function completeTask(app, file, content, line, status = null, result = null) {
+    return (await completeTaskTransaction(app, file, content, line, status, result)).content;
+  }
+
+  function undoReplacements(content, tokens) {
+    let lines = String(content).split(/\r?\n/);
+    for (const token of [...tokens].reverse()) {
+      const after = token?.afterLines || [], before = token?.beforeLines || [];
+      const matches = [];
+      for (let i = 0; i <= lines.length - after.length; i++) {
+        if (after.every((value, offset) => lines[i + offset] === value)) matches.push(i);
+      }
+      if (matches.length !== 1) return { ok: false, reason: matches.length ? "completed text is ambiguous" : "completed text was edited" };
+      let at = Number(token?.start);
+      if (!Number.isInteger(at) || !after.every((value, offset) => lines[at + offset] === value)) {
+        at = matches[0];
+      }
+      lines.splice(at, after.length, ...before);
+    }
+    return { ok: true, content: lines.join("\n") };
+  }
+
+  async function undoCompletionTransactions(app, file, content, tokens) {
+    const result = undoReplacements(content, tokens);
+    if (!result.ok) throw new Error(`Could not rewind: ${result.reason}. No changes were made.`);
+    await app.vault.modify(file, result.content);
+    return result.content;
   }
 
   async function saveTaskComment(app, file, task, comment) {
@@ -157,7 +187,7 @@
 
 
   function createRunState() {
-    return { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0 };
+    return { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0, runTree: [], initialRunTree: [], actionHistory: [] };
   }
 
   // The host owns the envelope and storage location.  This deliberately small
@@ -183,6 +213,29 @@
     state.retired = Array.isArray(state.retired) ? state.retired : [];
     state.selected = Array.isArray(state.selected) ? state.selected : [];
     state.order = Array.isArray(state.order) ? state.order : [];
+    state.runTree = Array.isArray(state.runTree) ? state.runTree : [];
+    state.initialRunTree = Array.isArray(state.initialRunTree) ? state.initialRunTree : [];
+    state.actionHistory = Array.isArray(state.actionHistory) ? state.actionHistory : [];
+    // Keys are display paths. Re-normalize any saved under older display rules
+    // (which kept metadata such as ➕/🏁/✅) so sessions and history still match.
+    const norm = key => key == null ? key : requireCore().normalizeTaskKey(key);
+    const sessions = {};
+    Object.entries(state.sessions).forEach(([key, session]) => {
+      const existing = sessions[norm(key)];
+      if (!existing || session.elapsedBeforeStartMs > existing.elapsedBeforeStartMs) sessions[norm(key)] = session;
+    });
+    state.sessions = sessions;
+    ["retired", "selected", "order"].forEach(field => { state[field] = [...new Set(state[field].map(norm))]; });
+    if (Array.isArray(state.treeOrder)) state.treeOrder = [...new Set(state.treeOrder.map(norm))];
+    if (state.enabled && typeof state.enabled === "object") state.enabled = Object.fromEntries(Object.entries(state.enabled).map(([key, value]) => [norm(key), value]));
+    state.focusKey = norm(state.focusKey); state.activeLeafKey = norm(state.activeLeafKey);
+    state.actionHistory.forEach(action => { action.key = norm(action.key); action.retiredKeys = (action.retiredKeys || []).map(norm); });
+    const normalizeTree = node => {
+      node.display = requireCore().taskDisplay(node.display);
+      if (node._runKey != null) node._runKey = norm(node._runKey);
+      (node.children || []).forEach(normalizeTree);
+    };
+    state.runTree.forEach(normalizeTree); state.initialRunTree.forEach(normalizeTree);
     if (!state.screen) state.screen = state.activeLeafKey || Object.keys(state.sessions).length ? "run" : "select";
     state.schemaVersion = 2;
     return state;
@@ -255,6 +308,10 @@
     const core = requireCore();
     const state = options.state;
     const tasks = options.tasks || [];
+    const keyOf = options.keyOf || (node => node.id);
+    const processed = new Set(options.processed || []);
+    const currentKey = options.currentKey || null;
+    const locked = node => processed.has(keyOf(node)) || keyOf(node) === currentKey || Boolean(options.locked?.(node));
     state.taskQuery = state.taskQuery || "";
     state.collapsedIds = Array.isArray(state.collapsedIds) ? state.collapsedIds : [];
     state.setupCursorId = state.setupCursorId || null;
@@ -293,7 +350,7 @@
     top.createSpan({ cls: "rr-summary", text: `${leaves.length} leaf task${leaves.length === 1 ? "" : "s"} · ${core.formatDuration(leaves.reduce((sum, leaf) => sum + leaf.estimateMs, 0))}` });
     const actions = tools.createDiv({ cls: "rr-tools-row" });
     const matchingNodes = () => visibleRows().filter(row => row.selfMatches).map(row => row.node);
-    const selectionNodes = () => state.taskQuery.trim() ? matchingNodes() : tasks;
+    const selectionNodes = () => (state.taskQuery.trim() ? matchingNodes() : core.flatten(tasks)).filter(node => !locked(node));
     const structureNodes = () => state.taskQuery.trim() ? matchingNodes() : core.flatten(tasks);
     const action = (label, handler, cls = "rr-tool-btn") => {
       const button = actions.createEl("button", { cls, text: label });
@@ -308,13 +365,17 @@
 
     const list = container.createDiv({ cls: "rr-review-list" });
     list.tabIndex = 0;
-    list.setAttribute("aria-label", "Task tree; use Vim keys j/k, h/l, x, Shift-J/Shift-K, gg/G, and slash");
+    list.setAttribute("aria-label", "Task tree; use Vim keys j/k, h/l, x, Shift-J/Shift-K, gg/G, u (undo), and slash");
     const rows = visibleRows();
     if (!rows.some(row => row.node.id === state.setupCursorId)) state.setupCursorId = rows[0]?.node.id ?? null;
     if (!rows.length) { list.createDiv({ cls: "rr-empty", text: "No matching tasks." }); return; }
     rows.forEach(({ node, siblings, idx, depth, ancestorsEnabled, effectiveHere, selfMatches }) => {
       const row = list.createDiv({ cls: "rr-review-item" });
+      const nodeKey = keyOf(node), isProcessed = processed.has(nodeKey), isCurrent = nodeKey === currentKey;
       if (!effectiveHere) row.addClass("rr-review-item-disabled");
+      if (isProcessed) row.addClass("rr-review-item-processed");
+      if (isCurrent) row.addClass("rr-review-item-current");
+      if (locked(node)) row.addClass("rr-review-item-locked");
       if (state.taskQuery.trim() && !selfMatches) row.addClass("rr-review-item-context");
       if (node.id === state.setupCursorId) row.addClass("rr-review-item-active");
       const text = row.createSpan({ cls: "rr-review-text" });
@@ -324,18 +385,27 @@
         const disclosure = text.createEl("button", { cls: "rr-disclosure", text: state.collapsedIds.includes(node.id) && !state.taskQuery ? "▸" : "▾", attr: { "aria-label": state.collapsedIds.includes(node.id) ? "Expand branch" : "Collapse branch" } });
         disclosure.addEventListener("click", event => { event.stopPropagation(); state.collapsedIds = state.collapsedIds.includes(node.id) ? state.collapsedIds.filter(id => id !== node.id) : [...state.collapsedIds, node.id]; redraw(); });
       }
-      text.addEventListener("click", () => { state.setupCursorId = node.id; redraw(); if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus()); });
+      text.addEventListener("click", () => {
+        state.setupCursorId = node.id; redraw(); if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
+      });
       const badges = row.createDiv({ cls: "rr-badge-group" });
       if (node.goalCount != null) badges.createSpan({ cls: "rr-badge", text: `🎯 ${node.goalCount}` });
       badges.createSpan({ cls: "rr-badge", text: core.formatDuration(node.estimateMs) });
       const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
       const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
-      checkbox.checked = node.selected !== false; checkbox.disabled = !ancestorsEnabled;
+      checkbox.checked = node.selected !== false; checkbox.disabled = !ancestorsEnabled || locked(node);
       checkbox.addEventListener("change", () => { node.selected = checkbox.checked; redraw(); });
       const reorder = row.createDiv({ cls: "rr-reorder" });
+      const rewindTitle = isProcessed ? options.rewindTitle?.(node, nodeKey) : null;
+      if (rewindTitle) {
+        const undo = reorder.createEl("button", { cls: "rr-reorder-btn rr-undo-btn", text: "↶ Undo", attr: { title: rewindTitle, "aria-label": rewindTitle } });
+        undo.addEventListener("click", event => { event.stopPropagation(); options.onRewind(node, nodeKey); });
+        return;
+      }
       const move = delta => { const target = idx + delta; if (target < 0 || target >= siblings.length) return; [siblings[idx], siblings[target]] = [siblings[target], siblings[idx]]; redraw(); };
-      const up = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" }); up.disabled = !ancestorsEnabled || idx === 0; up.addEventListener("click", () => move(-1));
-      const down = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" }); down.disabled = !ancestorsEnabled || idx === siblings.length - 1; down.addEventListener("click", () => move(1));
+      const up = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" }); up.disabled = !ancestorsEnabled || locked(node) || idx === 0; up.addEventListener("click", () => move(-1));
+      const down = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" }); down.disabled = !ancestorsEnabled || locked(node) || idx === siblings.length - 1; down.addEventListener("click", () => move(1));
+      if (isCurrent && typeof row.scrollIntoView === "function") setTimeout(() => row.scrollIntoView({ block: "center", inline: "nearest" }), 0);
     });
     let pendingG = false;
     list.addEventListener("keydown", event => {
@@ -346,13 +416,30 @@
       else if (event.key === "G") next = rows.length - 1;
       else if (event.key === "g") { if (pendingG) next = 0; pendingG = !pendingG; event.preventDefault(); if (next !== current) { state.setupCursorId = rows[next].node.id; redraw(); } return; }
       else if (event.key === "/") { event.preventDefault(); container.querySelector(".rr-task-search")?.focus(); return; }
-      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item?.ancestorsEnabled) item.node.selected = item.node.selected === false; }
+      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item?.ancestorsEnabled && !locked(item.node)) item.node.selected = item.node.selected === false; }
+      else if (event.key === "u") { const item = rows[current]; if (item && options.rewindTitle?.(item.node, keyOf(item.node))) { event.preventDefault(); options.onRewind(item.node, keyOf(item.node)); } return; }
       else if (event.key === "h") { const item = rows[current]; if (item?.node.children.length && !state.collapsedIds.includes(item.node.id)) state.collapsedIds.push(item.node.id); }
       else if (event.key === "l") state.collapsedIds = state.collapsedIds.filter(id => id !== rows[current]?.node.id);
-      else if (["K", "J"].includes(event.key)) { const item = rows[current], target = item ? item.idx + (event.key === "K" ? -1 : 1) : -1; if (item?.ancestorsEnabled && target >= 0 && target < item.siblings.length) [item.siblings[item.idx], item.siblings[target]] = [item.siblings[target], item.siblings[item.idx]]; }
+      else if (["K", "J"].includes(event.key)) { const item = rows[current], target = item ? item.idx + (event.key === "K" ? -1 : 1) : -1; if (item?.ancestorsEnabled && !locked(item.node) && target >= 0 && target < item.siblings.length) [item.siblings[item.idx], item.siblings[target]] = [item.siblings[target], item.siblings[item.idx]]; }
       else return;
       pendingG = false; event.preventDefault(); if (next !== current && rows[next]) state.setupCursorId = rows[next].node.id; redraw();
     });
+  }
+
+  // Undo is a rewind: the chosen action and every later one are reverted.
+  function rewindTitle(history, key) {
+    const index = (history || []).findIndex(action => action.key === key);
+    if (index < 0) return null;
+    const later = history.length - index - 1;
+    return `Undo — reopen this task${later ? ` and undo ${later} later action${later === 1 ? "" : "s"}` : ""}`;
+  }
+
+  function confirmRewind(history, key) {
+    const index = (history || []).findIndex(action => action.key === key);
+    if (index < 0) return false;
+    const count = history.length - index;
+    if (count <= 1 || typeof confirm !== "function") return true;
+    return confirm(`Undo ${count} actions (this task and everything completed or skipped after it)? Completed tasks will be unchecked in the note.`);
   }
 
   function lineForKey(content, rootLine, key, defaultEstimateMs) {
@@ -499,7 +586,6 @@
     done.addEventListener("click", () => finish(null));
     done.title = "Right-click to choose a Tasks status";
     done.addEventListener("contextmenu", event => { event.preventDefault(); if (timing.mode !== "break") showStatusMenu(options.app, done, finish); });
-    container.createDiv({ cls: "rr-next", text: options.nextLabel || "This is the last remaining leaf task." });
     return { dispose, repaint };
   }
 
@@ -522,16 +608,23 @@
       container.createDiv({ cls: "rr-embedded-error", text: "Referenced task no longer exists." });
       return { model: null, dispose() {} };
     }
-    const all = core.flatten([current.root]);
+    const runRoots = state.runTree?.length ? state.runTree : [current.root];
+    const all = core.flatten(runRoots);
     const map = new Map(all.map(node => [node.id, node]));
-    const keyOf = node => core.taskPath(node, map).map(part => part.display).join("\u0000");
+    const keyOf = node => node._runKey || core.taskPath(node, map).map(part => part.display).join("\u0000");
     const byKey = new Map(all.map(node => [keyOf(node), node]));
     const retired = new Set(state.retired || []);
+    // The note is authoritative for completion: a task checked there (in an
+    // earlier run, by hand, or by Done before a reload) counts as processed.
+    const fileAll = core.flatten([current.root]);
+    const fileMap = new Map(fileAll.map(node => [node.id, node]));
+    const checkedInFile = new Set(fileAll.filter(node => node.checked).map(node => core.taskPath(node, fileMap).map(part => part.display).join("\u0000")));
+    const isDone = node => node.checked || retired.has(keyOf(node)) || checkedInFile.has(keyOf(node));
     const orderIndex = new Map((state.order || []).map((key, index) => [key, index]));
-    const leaves = all.filter(node => !node.children.length && !node.checked && !retired.has(keyOf(node)))
+    const leaves = all.filter(node => !node.children.length && !isDone(node))
       .sort((a, b) => (orderIndex.get(keyOf(a)) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(keyOf(b)) ?? Number.MAX_SAFE_INTEGER));
     let activeLeaf = byKey.get(state.activeLeafKey);
-    if (!activeLeaf || activeLeaf.checked || activeLeaf.children.length || retired.has(keyOf(activeLeaf))) activeLeaf = leaves[0] || null;
+    if (!activeLeaf || activeLeaf.children.length || isDone(activeLeaf)) activeLeaf = leaves[0] || null;
     if (!activeLeaf) {
       container.createDiv({ cls: "rr-embedded-done", text: "Routine complete 🎉" });
       container.createDiv({ cls: "rr-embedded-progress", text: `${state.processedCount || 0} processed; ${state.completedCount || 0} completed.` });
@@ -555,7 +648,8 @@
     const advance = () => {
       settle(session);
       const affected = core.flatten([focus]).filter(node => !node.children.length && !retired.has(keyOf(node))).length;
-      core.flatten([focus]).forEach(node => retired.add(keyOf(node)));
+      const retiredKeys = core.flatten([focus]).map(keyOf); retiredKeys.forEach(key => retired.add(key));
+      state.actionHistory = [...(state.actionHistory || []), { key: keyOf(focus), kind: "skip", retiredKeys, affected }];
       state.retired = [...retired]; state.focusKey = null; state.activeLeafKey = null;
       state.processedCount = (state.processedCount || 0) + affected;
       options.onStateChange?.(state);
@@ -569,7 +663,10 @@
       core.flatten([focus]).forEach(node => retired.add(keyOf(node)));
       state.retired = [...retired]; options.onStateChange?.(state);
       try {
-        await options.onComplete?.(focus.line, { elapsedMs: core.elapsedForSession(session), count: session.count, goalCount: focus.goalCount }, status);
+        const undo = await options.onComplete?.(focus.line, { elapsedMs: core.elapsedForSession(session), count: session.count, goalCount: focus.goalCount }, status, keyOf(focus));
+        state.actionHistory = [...(state.actionHistory || []), { key: keyOf(focus), kind: "done", retiredKeys: core.flatten([focus]).map(keyOf), affected, undo: undo || null }];
+        options.onStateChange?.(state);
+        if (options.onRefresh) options.onRefresh(); else renderRunner(container, options);
       } catch (error) {
         state.completedCount--; state.processedCount -= affected;
         core.flatten([focus]).forEach(node => retired.delete(keyOf(node)));
@@ -577,15 +674,12 @@
         throw error;
       }
     };
-    const activeIndex = leaves.findIndex(node => node.id === activeLeaf.id);
-    const next = leaves.slice(activeIndex + 1).find(node => !retired.has(keyOf(node)));
     const view = renderRunCard(container, {
       app: options.app, task: focus, session, path: activePath,
       timing: state.timing || (state.timing = { taskMs: sessionElapsedTotal(state) }),
       onRefresh: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
       redrawIntervalMs: options.redrawIntervalMs,
       progressLabel: `Leaf ${Math.max(1, (state.processedCount || 0) + 1)} of ${state.totalLeafCount || leaves.length}`,
-      nextLabel: next ? `Next: ${core.taskPath(next, map).map(node => node.display).join(" → ")} (${core.formatDuration(next.estimateMs)})` : null,
       onStop: () => {
         setRunnerMode(state.timing, "stopped");
         Object.values(state.sessions || {}).forEach(value => settle(value));
@@ -602,6 +696,44 @@
       onSkip: advance,
       onDone: finish,
       onComment: options.onComment,
+    });
+    const treeHost = container.createDiv({ cls: "rr-run-tree" });
+    const activeKeys = new Set(activePath.map(keyOf));
+    const syncTree = () => {
+      state.treeOrder = core.flatten(runRoots).map(keyOf);
+      state.enabled = Object.fromEntries(core.flatten(runRoots).map(node => [keyOf(node), node.selected !== false]));
+      state.totalLeafCount = (state.processedCount || 0) + enabledLeaves(runRoots).filter(node => !retired.has(keyOf(node))).length;
+      options.onStateChange?.(state);
+    };
+    renderSelection(treeHost, {
+      state, tasks: runRoots, keyOf, currentKey: state.activeLeafKey, processed: all.filter(isDone).map(keyOf),
+      locked: node => activeKeys.has(keyOf(node)), render: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
+      onChange: syncTree,
+      onReset: () => {
+        const initial = JSON.parse(JSON.stringify(state.initialRunTree || []));
+        const initialMap = new Map(core.flatten(initial).map(node => [keyOf(node), node]));
+        core.flatten(runRoots).forEach(node => { const saved = initialMap.get(keyOf(node)); if (saved && !retired.has(keyOf(node))) node.selected = saved.selected !== false; });
+      },
+      rewindTitle: (_node, key) => rewindTitle(state.actionHistory, key),
+      onRewind: async (_node, key) => {
+        const history = state.actionHistory || [], index = history.findIndex(action => action.key === key);
+        if (index < 0 || !confirmRewind(history, key)) return;
+        const undone = history.slice(index);
+        // The host reverts note edits and reports failures; on failure nothing
+        // in the run state changes either.
+        try { await options.onRewind?.(undone); } catch (error) { console.error(error); return; }
+        settle(session);
+        const nextRetired = new Set(state.retired || []);
+        undone.forEach(action => (action.retiredKeys || []).forEach(value => nextRetired.delete(value)));
+        state.retired = [...nextRetired]; state.processedCount = Math.max(0, (state.processedCount || 0) - undone.reduce((sum, action) => sum + (action.affected || 0), 0));
+        state.completedCount = Math.max(0, (state.completedCount || 0) - undone.filter(action => action.kind === "done").length);
+        const rewindNode = byKey.get(key);
+        const rewindLeaf = rewindNode && (rewindNode.children.length ? core.flatten([rewindNode]).find(node => !node.children.length) : rewindNode);
+        state.actionHistory = history.slice(0, index); state.activeLeafKey = rewindLeaf ? keyOf(rewindLeaf) : key; state.focusKey = key;
+        const selected = state.sessions[key] || (state.sessions[key] = { elapsedBeforeStartMs: 0, startedAt: null, count: 0 });
+        if (state.timing?.mode !== "break") selected.startedAt = Date.now();
+        options.onStateChange?.(state); if (options.onRefresh) options.onRefresh(); else renderRunner(container, options);
+      },
     });
     return { model: current, state, dispose: view.dispose };
   }
@@ -662,7 +794,15 @@
       start.disabled = !selectedCount;
       start.addEventListener("click", () => {
         syncSelection();
-        state.retired = leaves.filter(node => !state.selected.includes(keyOf(node))).map(keyOf);
+        const selectedKeys = new Set(state.selected);
+        const retainSelected = (node, ancestorsEnabled = true) => {
+          const enabled = ancestorsEnabled && node.selected !== false;
+          if (!node.children.length) return enabled && selectedKeys.has(keyOf(node)) ? { ...node, children: [] } : null;
+          const children = node.children.map(child => retainSelected(child, enabled)).filter(Boolean);
+          return children.length ? { ...node, selected: true, children } : null;
+        };
+        const selectedRoots = selectionTasks.map(node => retainSelected(node)).filter(Boolean);
+        state.retired = [];
         // Starting from the selection screen begins a new run. Do not inherit
         // paused clocks left by a prior run that was stopped back to selection.
         state.sessions = {};
@@ -670,6 +810,10 @@
         state.focusKey = null;
         state.activeLeafKey = null;
         state.totalLeafCount = selectedCount;
+        core.flatten(selectedRoots).forEach(node => { node._runKey = keyOf(node); });
+        state.runTree = JSON.parse(JSON.stringify(selectedRoots));
+        state.initialRunTree = JSON.parse(JSON.stringify(selectedRoots));
+        state.actionHistory = [];
         state.processedCount = 0; state.completedCount = 0; state.summary = null;
         state.screen = "run"; notify();
         if (options.onRefresh) options.onRefresh(); else renderSession(container, options);
@@ -687,7 +831,9 @@
       return { model: current, state, dispose() {} };
     }
 
-    if (state.screen === "summary" || !leaves.some(node => !new Set(state.retired).has(keyOf(node)))) {
+    const stableRoots = state.runTree?.length ? state.runTree : [current.root];
+    const stableLeaves = enabledLeaves(stableRoots);
+    if (state.screen === "summary" || !stableLeaves.some(node => !new Set(state.retired).has(node._runKey || keyOf(node)))) {
       if (!state.summary) {
         if (state.timing) setRunnerMode(state.timing, "stopped");
         state.summary = { ...(state.timing ? runnerTotals(state.timing) : { elapsedMs: sessionElapsedTotal(state) }), processedCount: state.processedCount || 0, completedCount: state.completedCount || 0, totalLeafCount: state.totalLeafCount || 0 };
@@ -704,9 +850,9 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, completeTask, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     setRunnerMode, runnerTotals, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
-    lineForKey, renderRunner, renderSession };
+    lineForKey, rewindTitle, confirmRewind, renderRunner, renderSession };
 });

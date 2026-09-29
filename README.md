@@ -81,6 +81,22 @@ node tests/routine-runner.test.js
 Task Done changes the canonical task checkbox only; it never rewrites an Actual occurrence. Schedule switching and context End are independent of routine completion and routine Pause/Resume.
 
 When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, editable count goals, Pause/Resume, Skip, Done, the right-click Tasks-status menu, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. Embedded state is persisted by canonical task link and its timer requests a screen wake lock. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, status discovery, result formatting, and completion, while retaining independent timer state.
+# Run tree and Undo
+
+Both runners show the run's task tree below the task card. Task labels come from
+one shared function (`taskDisplay` in `routine-runner.js`), which hides Tasks
+metadata (`📅 ✅ ➕ ⏫ 🔁 🆔 ⛔ …`), runner fields (`⏱ 🎯 🏁 🥅`), bracketed
+groups such as `[🏁 5:00, 🥅 3]`, comments, and block IDs. Completing a task
+therefore never changes its label or its saved key.
+
+Processed tasks are greyed and struck through: those skipped or completed in this
+run, plus any task already checked in the note. Tasks processed in this run have
+a **↶ Undo** button (or `u` in the tree). Undo is a rewind: it reopens that task
+and reverts it and every later Skip/Done, unchecking completed tasks in the note.
+You are asked to confirm when more than one action would be undone. If a completed
+line was edited since, the rewind is refused and nothing changes. Tasks that were
+checked before the run started have no Undo; uncheck them in the note.
+
 # Runner pauses
 
 Both runners share two pause controls. The task card's Pause stops only the task

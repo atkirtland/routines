@@ -36,10 +36,20 @@ assert.equal(R.parseRoutineText("- [ ] Visible label ^native-block-id\n").tasks[
 assert.equal(R.parseRoutineText("- [ ] 中文任务 ^任務-1\n").tasks[0].display, "中文任务");
 const createdDateSource = "- [ ] 記錄夢 🏁 15:15 ➕ 2026-09-27 ✅ 2026-09-27 ^dream";
 const createdDateTask = R.parseRoutineText(createdDateSource).tasks[0];
-assert.equal(createdDateTask.display, "記錄夢 🏁 15:15 ✅ 2026-09-27");
+assert.equal(createdDateTask.display, "記錄夢");
 assert.equal(createdDateTask.sourceLine, createdDateSource);
 assert.equal(E.model(createdDateSource, 0).root.display, createdDateTask.display);
 assert.equal(R.parseRoutineText("- [ ] Task ➕️ 2026-09-27").tasks[0].display, "Task");
+assert.equal(R.taskDisplay("- [x] Run #fitness [🏁 5:00, 🥅 3] 📅 2026-09-28 ^run"), "Run #fitness");
+assert.equal(R.taskDisplay("- [ ] Stretch ⏱️ 10:05 🎯 20 -- felt stiff"), "Stretch");
+assert.equal(R.taskDisplay("- [ ] Water 🔁 every day when done ⏫ 🆔 abc ⛔ x,y"), "Water");
+assert.equal(R.taskDisplay("- [ ] Read [🍎](https://example.com) now"), "Read [🍎](https://example.com) now");
+assert.equal(R.taskDisplay("- [ ] Eat fish ^961371"), "Eat fish");
+assert.equal(R.taskDisplay("  - [x] 中文任务 #t/p ^任務-1"), "中文任务 #t/p");
+assert.equal(R.taskDisplay("- Plain list item"), "Plain list item");
+// Completing a task must not change its label, or run keys stop matching.
+assert.equal(R.taskDisplay("- [x] Push-ups 🎯 20 🏁 1:05 🥅 18 ✅ 2026-09-29"), R.taskDisplay("- [ ] Push-ups 🎯 20"));
+assert.equal(R.normalizeTaskKey("Plan ➕ 2026-09-27\u0000Fix [🏁 0:07] ✅ 2026-09-27"), "Plan\u0000Fix");
 assert.equal(R.formatDuration(65000), "1:05");
 assert.equal(R.formatDuration(-3723000), "-1:02:03");
 
@@ -98,7 +108,7 @@ assert.deepEqual(
 );
 assert.equal(E.replacementForTask("  - [ ] Child", null), "  - [x] Child");
 assert.equal(E.replacementForTask("- [ ] Child", "- [x] Child ✅ 2026-09-27"), "- [x] Child ✅ 2026-09-27");
-assert.deepEqual(E.createRunState(), { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0 });
+assert.deepEqual(E.createRunState(), { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0, runTree: [], initialRunTree: [], actionHistory: [] });
 assert.equal(E.lineForKey(`intro\n- [ ] Morning routine ^morning-routine\n  - [ ] Make bed\n  - [ ] Breakfast\n`, 1, "Morning routine\u0000Breakfast"), 3);
 assert.equal(E.lineForKey(`new line\nintro\n- [ ] Morning routine ^morning-routine\n  - [ ] Make bed\n  - [ ] Breakfast\n`, 2, "Morning routine\u0000Breakfast"), 4);
 
@@ -123,9 +133,12 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   assert.equal(task.line, 1);
   Object.assign(task, await E.saveTaskComment(app, { path: "Tasks.md" }, task, "Second"));
   assert(content.includes("-- Second #daily/dream"));
-  await E.completeTask(app, { path: "Tasks.md" }, content, task.line, null, { elapsedMs: 7000 });
+  const beforeCompletion = content;
+  const completed = await E.completeTaskTransaction(app, { path: "Tasks.md" }, content, task.line, null, { elapsedMs: 7000 });
   assert(content.includes("-- Second"));
   assert(content.includes("🏁 0:07"));
+  assert.deepEqual(E.undoReplacements(content, [completed.undo]), { ok: true, content: beforeCompletion });
+  assert.equal(E.undoReplacements(content.replace("🏁 0:07", "🏁 edited"), [completed.undo]).ok, false);
   content = "Other\n" + commentSource + "\n" + commentSource;
   const stale = { ...task, line: 0, sourceLine: commentSource };
   const previousWrites = writes;
@@ -134,6 +147,10 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   class Element {
     constructor(options = {}) { Object.assign(this, options); this.children = []; this.events = {}; this.style = {}; this.classList = { toggle() {} }; }
     createDiv(options) { return this.createEl("div", options); }
+    addClass(value) { this.cls = this.cls ? `${this.cls} ${value}` : value; }
+    setAttribute() {}
+    querySelector() { return null; }
+    empty() { this.children = []; }
     createSpan(options) { return this.createEl("span", options); }
     createEl(tag, options) { const child = new Element({ tag, ...options }); this.children.push(child); return child; }
     addEventListener(name, handler) { this.events[name] = handler; }
@@ -153,6 +170,7 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   });
   try {
     const elements = node => [node, ...node.children.flatMap(elements)];
+    assert(!elements(container).some(node => node.cls === "rr-task-queue"), "run card should not render the removed breadcrumb queue");
     assert(!elements(container).some(node => node.tag === "input"));
     const crumbs = elements(container).filter(node => node.events.contextmenu && node.text);
     const contextEvent = { preventDefault() {}, stopPropagation() {} };
@@ -176,6 +194,27 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
     assert.equal(savedTask, parent);
     doc.events.keydown({ key: "Escape", preventDefault() {} });
     assert(parentMenu.removed);
+
+    // Run tree: tasks checked in the note and skipped tasks are greyed, and
+    // only actions from this run offer Undo.
+    const runContent = "- [ ] Routine ^r\n  - [x] Old [🏁 1:00] ✅ 2026-09-28\n  - [ ] First\n  - [ ] Second\n";
+    const runState = E.createRunState(); runState.screen = "run";
+    const runBox = new Element();
+    let runView;
+    const runOptions = { content: runContent, rootLine: 0, state: runState, onRefresh: () => { runView?.dispose(); runView = E.renderRunner(runBox, runOptions); } };
+    runOptions.onRefresh();
+    const rowFor = label => elements(runBox).find(node => node.cls?.startsWith("rr-review-item") && elements(node).some(child => child.text === label));
+    assert(rowFor("Old").cls.includes("rr-review-item-processed"));
+    assert(!elements(runBox).some(node => node.text === "↶ Undo"));
+    elements(runBox).find(node => node.text === "Skip").events.click();
+    assert(rowFor("First").cls.includes("rr-review-item-processed"));
+    assert(rowFor("Second").cls.includes("rr-review-item-current"));
+    const undo = elements(rowFor("First")).find(node => node.text === "↶ Undo");
+    assert.equal(undo.attr.title, "Undo — reopen this task");
+    await undo.events.click({ stopPropagation() {} });
+    assert.equal(runState.activeLeafKey, "Routine\u0000First");
+    assert.deepEqual(runState.actionHistory, []);
+    runView.dispose();
   } finally { view.dispose(); delete global.document; delete global.innerWidth; delete global.innerHeight; }
   console.log("routine-runner: comment persistence tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

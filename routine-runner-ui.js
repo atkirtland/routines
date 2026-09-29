@@ -82,6 +82,8 @@ const defaultState = {
   retiredIds: [],
   totalLeafCount: 0,
   processedLeafCount: 0,
+  actionHistory: [],
+  initialTreeOrder: [],
   taskQuery: "",
   collapsedIds: [],
   setupCursorId: null,
@@ -190,6 +192,7 @@ function taskRecord(task, map = nodeMap()) {
     "source-line": task.sourceLine,
     "line-hint": task.line,
     retired: state.retiredIds.includes(task.id),
+    selected: task.selected !== false,
   };
 }
 
@@ -238,6 +241,8 @@ function cacheObject() {
       },
       "active-leaf": state.activeLeafId,
       "focused-task": state.focusId,
+      "initial-tree-order": state.initialTreeOrder,
+      "action-history": state.actionHistory,
       tasks: flatten(state.runTasks).map((task) => taskRecord(task, map)),
     };
   }
@@ -425,7 +430,8 @@ function arraysEqual(a, b) {
 // Exact text and ancestry dominate; the old line number breaks nearby ties.
 function matchTaskRecord(record, candidates, map, reportAmbiguity = true) {
   const source = record?.["source-line"];
-  const path = record?.["task-path"] ?? record?.["ancestry-path"];
+  // Paths cached under older display rules may still carry metadata.
+  const path = (record?.["task-path"] ?? record?.["ancestry-path"])?.map(RR.taskDisplay);
   const hint = Number(record?.["line-hint"]);
   const scored = candidates.map((task) => {
     const candidatePath = taskPath(task, map).map((part) => part.display);
@@ -508,8 +514,12 @@ async function restoreRoutine(saved) {
     state.sectionIdx = choices.length ? String(choices[0].idx) : "";
   }
   recomputeTasksForSection();
-  const available = flatten(state.tasks);
-  const availableMap = nodeMap(state.tasks);
+  // Include completed source tasks while restoring: processed rows must remain
+  // in the stable run tree and may carry reversible completion history.
+  const restoreRange = state.sectionIdx === "" ? { start: 0, end: state.totalLines }
+    : sectionLineRange(state.headings, state.totalLines, Number(state.sectionIdx));
+  const available = state.allTasks.filter(task => task.line >= restoreRange.start && task.line < restoreRange.end);
+  const availableMap = new Map(state.allTasks.map(task => [task.id, task]));
   const used = new Set();
   const restored = [];
   const warnings = [];
@@ -528,7 +538,7 @@ async function restoreRoutine(saved) {
     }
     if (match.ambiguous) { pruned = true; warnings.push(`Removed ambiguous routine task “${label}” (formerly near line ${record?.["line-hint"] ?? "?"})`); continue; }
     used.add(match.id);
-    restored.push({ ...match, id: record.id, parentId: record.parent ?? null, children: [] });
+    restored.push({ ...match, id: record.id, parentId: record.parent ?? null, selected: record.selected !== false, children: [] });
   }
   const restoredMap = new Map(restored.map((task) => [task.id, task]));
   for (const task of restored) if (task.parentId && restoredMap.has(task.parentId)) restoredMap.get(task.parentId).children.push(task);
@@ -548,6 +558,8 @@ async function restoreRoutine(saved) {
   state.completedCount = Math.max(0, Number(saved.progress?.["completed-count"]) || 0);
   state.totalLeafCount = Math.max(0, Number(saved.progress?.["total-leaf-count"]) || enabledLeaves(state.runTasks).length);
   state.processedLeafCount = Math.max(0, Number(saved.progress?.["processed-leaf-count"]) || 0);
+  state.actionHistory = Array.isArray(saved["action-history"]) ? saved["action-history"] : [];
+  state.initialTreeOrder = Array.isArray(saved["initial-tree-order"]) ? saved["initial-tree-order"] : flatten(state.runTasks).map(task => task.id);
   state.activeLeafId = restoredMap.has(saved["active-leaf"]) ? saved["active-leaf"] : enabledLeaves(state.runTasks).find((t) => !state.retiredIds.includes(t.id))?.id;
   state.focusId = restoredMap.has(saved["focused-task"]) ? saved["focused-task"] : state.activeLeafId;
   if (!state.activeLeafId || !state.focusId) throw new Error("cached routine has no remaining active task");
@@ -796,6 +808,8 @@ function renderSetup() {
     state.totalLeafCount = leaves.length;
     state.processedLeafCount = 0;
     state.completedCount = 0;
+    state.actionHistory = [];
+    state.initialTreeOrder = flatten(state.runTasks).map(task => task.id);
     state.screen = "run";
     hydrateSessions();
     activateCurrentSession();
@@ -853,18 +867,13 @@ function renderRun() {
   const task = currentTask();
   const session = currentSession();
   const leaves = enabledLeaves(state.runTasks);
-  const activeIndex = leaves.findIndex((leaf) => leaf.id === state.activeLeafId);
   const runLabel = currentSectionLabel();
   const path = taskPath(map.get(state.activeLeafId), map);
-  const retired = new Set(state.retiredIds);
-  flatten([task]).forEach((node) => retired.add(node.id));
-  const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
   const view = RRE.renderRunCard(container, {
     app, task, session, path, redrawIntervalMs: REDRAW_INTERVAL_MS,
     timing: state.timing || (state.timing = {}),
     onRefresh: () => enqueueAction(async () => { render(); await queueSave(); }),
     progressLabel: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
-    nextLabel: next ? `Next: ${pathLabel(next, map)} (${formatDuration(next.estimateMs)})` : null,
     onStop: () => enqueueAction(async () => { RRE.setRunnerMode(state.timing, "stopped"); await stopRoutine(); }),
     onFocus: part => enqueueAction(() => focusTask(part.id)),
     onStateChange: scheduleCountSave,
@@ -882,6 +891,24 @@ function renderRun() {
     }),
   });
   refs.sharedDispose = view.dispose;
+  const treeHost = container.createDiv({ cls: "rr-run-tree" });
+  const activePathIds = new Set(path.map(node => node.id));
+  RRE.renderSelection(treeHost, {
+    state, tasks: state.runTasks, currentKey: state.activeLeafId,
+    processed: [...state.retiredIds, ...flatten(state.runTasks).filter(node => node.checked).map(node => node.id)],
+    locked: node => activePathIds.has(node.id), render,
+    onChange: () => {
+      state.totalLeafCount = state.processedLeafCount + enabledLeaves(state.runTasks).filter(leaf => !state.retiredIds.includes(leaf.id)).length;
+      scheduleCountSave();
+    },
+    onReset: () => {
+      const positions = new Map(state.initialTreeOrder.map((id, index) => [id, index]));
+      const reset = nodes => { nodes.sort((a, b) => (positions.get(a.id) ?? 1e9) - (positions.get(b.id) ?? 1e9)); nodes.forEach(node => { if (!state.retiredIds.includes(node.id)) node.selected = true; reset(node.children); }); };
+      reset(state.runTasks);
+    },
+    rewindTitle: (_node, id) => RRE.rewindTitle(state.actionHistory, id),
+    onRewind: (_node, id) => { if (RRE.confirmRewind(state.actionHistory, id)) enqueueAction(() => rewindTo(id)); },
+  });
 }
 
 function renderDone() {
@@ -915,21 +942,20 @@ async function focusTask(id) {
   await queueSave();
 }
 
-async function advance(wasDone) {
+async function advance(wasDone, undo = null) {
   await flushCountSave();
   settleSession(currentSession());
   if (wasDone) state.completedCount++;
   const focused = currentTask();
   const retired = new Set(state.retiredIds);
   const branchIds = new Set(flatten([focused]).map((node) => node.id));
-  removeSessionsForIds(branchIds);
   branchIds.forEach((id) => retired.add(id));
   const leaves = enabledLeaves(state.runTasks);
   const affectedLeaves = leaves.filter((leaf) => branchIds.has(leaf.id) && !state.retiredIds.includes(leaf.id));
+  state.actionHistory.push({ key: focused.id, kind: wasDone ? "done" : "skip", retiredKeys: [...branchIds], affected: affectedLeaves.length, undo });
   state.processedLeafCount += affectedLeaves.length;
   state.retiredIds = [...retired];
-  const activeIndex = leaves.findIndex((leaf) => leaf.id === state.activeLeafId);
-  const next = leaves.slice(activeIndex + 1).find((leaf) => !retired.has(leaf.id));
+  const next = leaves.find((leaf) => !retired.has(leaf.id));
   if (next) {
     state.index++;
     state.activeLeafId = next.id;
@@ -980,15 +1006,46 @@ async function completeCurrentTask(selectedStatus = null) {
   }
 
   // Both hosts use the same Tasks-plugin transformation and 🏁/🥅 result metadata.
-  const nextContent = await RRE.completeTask(app, state.file, content, task.line, selectedStatus, {
+  const transaction = await RRE.completeTaskTransaction(app, state.file, content, task.line, selectedStatus, {
     elapsedMs: elapsedForSession(session), count: session.count, goalCount: task.goalCount,
   });
+  const nextContent = transaction.content;
   const shift = nextContent.split(/\r?\n/).length - lines.length;
   if (shift !== 0) {
     flatten(state.runTasks).forEach((t) => { if (t.line > task.line) t.line += shift; });
   }
 
-  await advance(true);
+  await advance(true, transaction.undo);
+}
+
+async function rewindTo(id) {
+  await flushCountSave();
+  const index = state.actionHistory.findIndex(action => action.key === id);
+  if (index < 0) return;
+  settleSession(currentSession());
+  const undone = state.actionHistory.slice(index);
+  const tokens = undone.filter(action => action.kind === "done" && action.undo).map(action => action.undo);
+  if (tokens.length) {
+    const content = await app.vault.read(state.file);
+    await RRE.undoCompletionTransactions(app, state.file, content, tokens);
+  }
+  const map = nodeMap();
+  undone.filter(action => action.kind === "done" && action.undo?.beforeLines?.length).forEach(action => {
+    const node = map.get(action.key), restored = RR.parseRoutineText(action.undo.beforeLines[0], DEFAULT_ESTIMATE_MS).tasks[0];
+    if (node && restored) Object.assign(node, { sourceLine: action.undo.beforeLines[0], display: restored.display, comment: restored.comment, checked: false });
+  });
+  const retired = new Set(state.retiredIds);
+  undone.forEach(action => (action.retiredKeys || []).forEach(key => retired.delete(key)));
+  state.retiredIds = [...retired];
+  state.processedLeafCount = Math.max(0, state.processedLeafCount - undone.reduce((sum, action) => sum + (action.affected || 0), 0));
+  state.completedCount = Math.max(0, state.completedCount - undone.filter(action => action.kind === "done").length);
+  state.actionHistory = state.actionHistory.slice(0, index);
+  const target = map.get(id);
+  const leaf = target?.children.length ? flatten([target]).find(node => !node.children.length) : target;
+  state.activeLeafId = leaf?.id || id; state.focusId = id; state.screen = "run";
+  const session = currentSession();
+  if (state.timing?.mode !== "break") session.startedAt = Date.now();
+  render(); await queueSave();
 }
 
 async function resetMissingCache() {
@@ -1002,6 +1059,8 @@ async function resetMissingCache() {
   state.completedCount = 0;
   state.totalLeafCount = 0;
   state.processedLeafCount = 0;
+  state.actionHistory = [];
+  state.initialTreeOrder = [];
   state.cacheError = null;
   state.cacheWritable = true;
   state.screen = "setup";

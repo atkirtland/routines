@@ -36,6 +36,39 @@
       comment: marker < 0 ? "" : description.slice(start, boundary).trim(), suffix: description.slice(boundary) };
   }
 
+  // Metadata fields hidden from every task label. Each field consumes only its
+  // own value so ordinary words next to an emoji are not swallowed.
+  const METADATA_FIELD_RE = new RegExp([
+    "[🔺⏫🔼🔽⏬]\\uFE0F?",
+    "[➕🛫⏳📅✅❌]\\uFE0F?\\s*\\d{4}-\\d{2}-\\d{2}",
+    "[⏱🏁]\\uFE0F?\\s*-?\\d+:\\d{2}(?::\\d{2})?",
+    "[🎯🥅]\\uFE0F?\\s*\\d+",
+    "🆔\\uFE0F?\\s*[\\p{L}\\p{N}_-]+",
+    "⛔\\uFE0F?\\s*[\\p{L}\\p{N}_-]+(?:\\s*,\\s*[\\p{L}\\p{N}_-]+)*",
+    "🔁\\uFE0F?[^🔺⏫🔼🔽⏬➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅#^\\[]*",
+  ].map(pattern => `\\s*(?:${pattern})`).join("|"), "gu");
+  // Bracketed metadata groups such as `[🏁 5:00, 🥅 3]` (not markdown links).
+  const METADATA_GROUP_RE = /\s*\[\s*\p{Extended_Pictographic}[^\]]*\](?!\()/gu;
+
+  // The single human-facing label for a task, shared by Routine Runner,
+  // embedded runs, and Schedule Runner. Accepts a task line, a list line, or a
+  // bare description; it is idempotent, so saved labels can be re-normalized.
+  function taskDisplay(text) {
+    const value = String(text ?? "");
+    const task = value.match(TASK_LINE_RE);
+    const description = task ? task[4] : value.replace(/^\s*[-*+]\s+/, "");
+    const parts = taskCommentParts(description);
+    return (parts.name + parts.suffix)
+      .replace(METADATA_GROUP_RE, "").replace(METADATA_FIELD_RE, "")
+      .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "").replace(/\s{2,}/g, " ").trim();
+  }
+
+  // Task keys are display paths joined by NUL; re-normalize keys saved before
+  // the current display rules so running sessions keep their identity.
+  function normalizeTaskKey(key) {
+    return String(key).split("\u0000").map(taskDisplay).join("\u0000");
+  }
+
   function withTaskComment(line, comment) {
     const match = line.match(TASK_LINE_RE);
     if (!match) throw new Error("Referenced line is no longer a task");
@@ -72,13 +105,10 @@
       const task = line.match(TASK_LINE_RE);
       if (!task) return;
       const description = task[4];
-      // Native Obsidian block IDs are source identity, not part of the task's
-      // human-facing label. Keep them in sourceLine for recovery/persistence.
+      // Metadata and block IDs are not part of the human-facing label; the
+      // full text stays in sourceLine for recovery/persistence.
       const commentParts = taskCommentParts(description);
-      const label = commentParts.name + commentParts.suffix;
-      const display = label.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "")
-        .replace(/➕\uFE0F?\s*\d{4}-\d{2}-\d{2}/gu, "")
-        .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "").replace(/\s{2,}/g, " ").trim();
+      const display = taskDisplay(description);
       const prefix = task[1].slice(0, task[1].search(/[-*+]/));
       let indent = 0;
       for (const character of prefix) indent += character === "\t" ? 4 : 1;
@@ -164,7 +194,7 @@
   }
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,
-    parseEstimateMs, parseGoalCount, taskCommentParts, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
+    parseEstimateMs, parseGoalCount, taskCommentParts, taskDisplay, normalizeTaskKey, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
     sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree,
     taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, elapsedForSession };
 });

@@ -11,6 +11,7 @@ try {
   const SB = globalThis.ScheduleRunner;
   (0, eval)(await app.vault.adapter.read(`${DIR}/routine-runner.js`));
   (0, eval)(await app.vault.adapter.read(`${DIR}/routine-runner-embed.js`));
+  const RR = globalThis.RoutineRunner;
   const RRE = globalThis.RoutineRunnerEmbed;
   RRE.installStyles(document);
   const rawRegistry = config.registry;
@@ -94,9 +95,9 @@ try {
     const nested = lineIndex >= 0 ? RRE.model(taskText, lineIndex) : null;
     const isTask = !!nested;
     const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
-    // Use the exact label parsed for the embedded task tree, including its
-    // metadata/comment rules. The fallback is only for non-task blocks.
-    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: nested ? nested.root.display : SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
+    // Every label, task or plain list block, goes through the shared
+    // Routine Runner display rules (metadata, comments, block IDs).
+    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: nested ? nested.root.display : RR.taskDisplay(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
   // Only write coordination and view cleanup survive a Dataview re-execution.
   // Routine session data is rehydrated from schedule-runner-state.yaml below.
@@ -208,18 +209,30 @@ try {
         saveEmbeddedState();
         enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`));
       },
-      onComplete: async (line, result, status) => {
+      onComplete: async (line, result, status, taskKey) => {
+        let undoToken = null;
         const completion = enqueueEmbedded(async () => {
           const current = await app.vault.read(evidence.target);
           const rootMatches = current.split(/\r?\n/).map((value, index) => value.match(new RegExp(`\\^${evidence.blockId}\\s*$`)) ? index : -1).filter(index => index >= 0);
           if (rootMatches.length !== 1) throw new Error(rootMatches.length ? "The linked root block ID is ambiguous" : "The linked root task no longer exists");
           const rootLine = rootMatches[0];
-          const currentLine = RRE.lineForKey(current, rootLine, runState.focusKey) ?? line;
-          await RRE.completeTask(app, evidence.target, current, currentLine, status, result);
-          await render();
+          const currentLine = RRE.lineForKey(current, rootLine, taskKey || runState.focusKey) ?? line;
+          const transaction = await RRE.completeTaskTransaction(app, evidence.target, current, currentLine, status, result);
+          undoToken = transaction.undo;
         });
         embeddedCoordinator.actionTail = completion.catch(error => { new Notice(`Task completion failed: ${error.message}`); });
         await embeddedCoordinator.actionTail;
+        return undoToken;
+      },
+      onRewind: async actions => {
+        const tokens = actions.filter(action => action.kind === "done" && action.undo).map(action => action.undo);
+        if (!tokens.length) return;
+        const rewind = enqueueEmbedded(async () => {
+          const current = await app.vault.read(evidence.target);
+          await RRE.undoCompletionTransactions(app, evidence.target, current, tokens);
+        });
+        embeddedCoordinator.actionTail = rewind.catch(() => {});
+        try { await rewind; } catch (error) { new Notice(error.message); throw error; }
       },
     });
     embeddedCoordinator.disposers.push(view.dispose);
