@@ -866,6 +866,15 @@ function renderRun() {
     onPause: () => { if (session.startedAt === null) session.startedAt = Date.now(); else settleSession(session); enqueueAction(queueSave); },
     onSkip: () => enqueueAction(() => advance(false)),
     onDone: status => enqueueAction(() => completeCurrentTask(status)),
+    onComment: (task, comment) => enqueueAction(async () => {
+      const original = task.sourceLine;
+      const updated = await RRE.saveTaskComment(app, state.file, task, comment);
+      for (const node of [...state.allTasks, ...flatten(state.tasks), ...flatten(state.runTasks)]) {
+        if (node.id === task.id && node.sourceLine === original) Object.assign(node, updated);
+      }
+      Object.assign(task, updated);
+      await queueSave();
+    }),
   });
   refs.sharedDispose = view.dispose;
 }

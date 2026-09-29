@@ -114,7 +114,22 @@
     return next;
   }
 
-  function renderBreadcrumbs(container, path, currentLine, onFocus, buttonMode = true) {
+  async function saveTaskComment(app, file, task, comment) {
+    const content = await app.vault.read(file);
+    const lines = content.split("\n");
+    let line = task.line;
+    if (lines[line] !== task.sourceLine) {
+      const matches = lines.flatMap((value, index) => value === task.sourceLine ? [index] : []);
+      if (matches.length !== 1) throw new Error("Task changed or is ambiguous. Reload the routine before saving a comment.");
+      line = matches[0];
+    }
+    const replacement = requireCore().withTaskComment(lines[line], comment);
+    lines[line] = replacement;
+    await app.vault.modify(file, lines.join("\n"));
+    return { line, sourceLine: replacement, comment: requireCore().taskCommentParts(replacement.match(requireCore().TASK_LINE_RE)[4]).comment };
+  }
+
+  function renderBreadcrumbs(container, path, currentLine, onFocus, buttonMode = true, onContext = null) {
     path.forEach((node, index) => {
       if (index) container.createSpan({ cls: "rr-crumb-sep", text: "→" });
       const current = node.line === currentLine;
@@ -123,6 +138,10 @@
         : container.createSpan({ cls: current ? "rr-crumb rr-crumb-current" : "rr-crumb", text: node.display });
       if (buttonMode) crumb.disabled = current;
       if (!current) crumb.addEventListener("click", () => onFocus?.(node.line, node));
+      if (onContext) {
+        crumb.title = "Right-click to edit this task's comment";
+        crumb.addEventListener("contextmenu", event => { event.preventDefault(); event.stopPropagation(); onContext(crumb, node); });
+      }
     });
   }
 
@@ -353,7 +372,45 @@
 
     const card = container.createDiv({ cls: "rr-card" });
     const crumbs = card.createDiv({ cls: "rr-task-text rr-embedded-crumbs" });
-    renderBreadcrumbs(crumbs, options.path, task.line, (_line, node) => options.onFocus?.(node), false);
+    let closeComment = () => {};
+    const openComment = (anchor, node) => {
+      closeComment();
+      const menu = document.body.createDiv({ cls: "rr-status-menu" });
+      menu.createDiv({ cls: "rr-est", text: node.display });
+      const row = menu.createDiv({ cls: "rr-tools-row" });
+      const input = row.createEl("input", { cls: "rr-input", attr: { type: "text", placeholder: "Task comment…", "aria-label": "Task comment" } });
+      input.value = node.comment || "";
+      const save = row.createEl("button", { cls: "rr-tool-btn", text: "Save comment" });
+      const cancel = row.createEl("button", { cls: "rr-tool-btn", text: "Close" });
+      const feedback = menu.createDiv({ cls: "rr-est", attr: { role: "status" } });
+      const outside = event => { if (!menu.contains(event.target)) closeComment(); };
+      const escape = event => { if (event.key === "Escape") { event.preventDefault(); closeComment(); } };
+      closeComment = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", outside, true);
+        document.removeEventListener("keydown", escape, true);
+      };
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", escape, true);
+      cancel.addEventListener("click", () => closeComment());
+      const rect = anchor.getBoundingClientRect();
+      menu.style.width = "min(360px, calc(100vw - 16px))";
+      const box = menu.getBoundingClientRect();
+      menu.style.left = `${Math.max(4, Math.min(rect.left, innerWidth - box.width - 4))}px`;
+      menu.style.top = `${Math.max(4, Math.min(rect.bottom + 6, innerHeight - box.height - 4))}px`;
+      input.focus();
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        try { await options.onComment(node, input.value); feedback.textContent = "Comment saved"; }
+        catch (error) { feedback.textContent = `Comment not saved: ${error.message}`; }
+        finally { save.disabled = false; }
+      });
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") { event.preventDefault(); save.click(); }
+        event.stopPropagation();
+      });
+    };
+    renderBreadcrumbs(crumbs, options.path, task.line, (_line, node) => options.onFocus?.(node), false, options.onComment ? openComment : null);
     card.createDiv({ cls: "rr-est", text: `Estimated: ${core.formatDuration(task.estimateMs)}` });
     const changed = () => options.onStateChange?.();
     if (task.goalCount != null) {
@@ -390,7 +447,7 @@
     const interval = setInterval(repaint, options.redrawIntervalMs || 1000);
     let wakeLock = null, disposed = false;
     if (typeof navigator !== "undefined" && "wakeLock" in navigator) navigator.wakeLock.request("screen").then(lock => { if (disposed) lock.release().catch(() => {}); else wakeLock = lock; }).catch(() => {});
-    const dispose = () => { if (disposed) return; disposed = true; clearInterval(interval); wakeLock?.release().catch(() => {}); wakeLock = null; };
+    const dispose = () => { if (disposed) return; disposed = true; closeComment(); clearInterval(interval); wakeLock?.release().catch(() => {}); wakeLock = null; };
     const buttons = card.createDiv({ cls: "rr-btn-row" });
     const pause = buttons.createEl("button", { cls: "rr-btn", text: session.startedAt == null ? "Resume" : "Pause" });
     pause.addEventListener("click", () => { options.onPause?.(); pause.textContent = session.startedAt == null ? "Resume" : "Pause"; repaint(); changed(); });
@@ -499,6 +556,7 @@
       onPause: () => { if (session.startedAt == null) session.startedAt = Date.now(); else settle(session); },
       onSkip: advance,
       onDone: finish,
+      onComment: options.onComment,
     });
     return { model: current, state, dispose: view.dispose };
   }
@@ -597,7 +655,7 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, completeTask, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, replacementForTask, completeTask, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
     lineForKey, renderRunner, renderSession };

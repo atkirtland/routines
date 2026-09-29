@@ -26,6 +26,24 @@
     return match ? Number(match[1]) : null;
   }
 
+  function taskCommentParts(description) {
+    const marker = description.indexOf(" -- ");
+    const start = marker < 0 ? 0 : marker + 4;
+    const tail = description.slice(start);
+    const metadata = tail.search(/\s+(?=#[\p{L}\p{N}_/\-]+|\^[\p{L}\p{N}_-]+\s*$|[🔺⏫🔼🔽⏬🔁➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅]|\[\p{Extended_Pictographic})/u);
+    const boundary = metadata < 0 ? description.length : start + metadata;
+    return { name: description.slice(0, marker < 0 ? boundary : marker).trimEnd(),
+      comment: marker < 0 ? "" : description.slice(start, boundary).trim(), suffix: description.slice(boundary) };
+  }
+
+  function withTaskComment(line, comment) {
+    const match = line.match(TASK_LINE_RE);
+    if (!match) throw new Error("Referenced line is no longer a task");
+    const parts = taskCommentParts(match[4]);
+    const value = String(comment).replace(/[\r\n]+/g, " ").trim();
+    return `${match[1]}${match[2]}${match[3]}${parts.name}${value ? ` -- ${value}` : ""}${parts.suffix}`;
+  }
+
   function insertBeforeTasksMetadata(line, insertText) {
     const trimmed = String(line).replace(/\s+$/, "");
     const match = trimmed.match(TASKS_METADATA_EMOJI_RE);
@@ -56,7 +74,9 @@
       const description = task[4];
       // Native Obsidian block IDs are source identity, not part of the task's
       // human-facing label. Keep them in sourceLine for recovery/persistence.
-      const display = description.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "")
+      const commentParts = taskCommentParts(description);
+      const label = commentParts.name + commentParts.suffix;
+      const display = label.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "")
         .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "").replace(/\s{2,}/g, " ").trim();
       const prefix = task[1].slice(0, task[1].search(/[-*+]/));
       let indent = 0;
@@ -65,7 +85,7 @@
       const parent = stack.at(-1) || null;
       const node = { id: `task-${nextId++}`, line: index, sourceLine: line, indent,
         parentId: parent?.id ?? null, children: [], checked: task[2] !== " ", selected: true,
-        display, displayPath: [...(parent?.displayPath ?? []), display],
+        display, comment: commentParts.comment, displayPath: [...(parent?.displayPath ?? []), display],
         estimateMs: parseEstimateMs(description, defaultEstimateMs), goalCount: parseGoalCount(description) };
       if (parent) parent.children.push(node);
       tasks.push(node); stack.push(node);
@@ -143,7 +163,7 @@
   }
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,
-    parseEstimateMs, parseGoalCount, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
+    parseEstimateMs, parseGoalCount, taskCommentParts, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
     sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree,
     taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, elapsedForSession };
 });

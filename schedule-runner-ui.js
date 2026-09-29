@@ -195,6 +195,9 @@ try {
       app, content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
       sourcePath: evidence.target.path, rootBlockId: evidence.blockId,
       onStateChange: saveEmbeddedState,
+      onComment: (task, comment) => enqueueEmbedded(async () => {
+        Object.assign(task, await RRE.saveTaskComment(app, evidence.target, task, comment));
+      }),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
       summaryActionLabel: "Back to task block",
       onSummaryAction: () => {
