@@ -2,6 +2,8 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 const S = require('../schedule-runner.js');
+require('../routine-runner.js');
+const E = require('../routine-runner-embed.js');
 class Element {
   constructor(tag, options = {}) { this.tag = tag; this.children = []; this.style = { setProperty() {} }; Object.assign(this, options); }
   appendChild(child) { child.parent = this; this.children.push(child); return child; }
@@ -23,7 +25,7 @@ const initial = '## Plan\n- 0900 Work ^p-work\n- 1000 Break ^p-break\n- 1100 Lat
 async function setup(running = false, note = initial) {
   const files = new Map([[notePath, note], ['Runner/schedule-runner-state.yaml', JSON.stringify({ 'schedule-runner-state-version': 2, sessions: { 'p-break': { running } } })]]);
   const root = new Element('root'), body = new Element('body'), notices = [];
-  const app = { internalPlugins: { plugins: {} }, vault: {
+  const app = { metadataCache: { getFileCache: () => ({}) }, internalPlugins: { plugins: {} }, vault: {
     getAbstractFileByPath: path => files.has(path) ? { path } : null,
     read: async file => files.get(file.path), modify: async (file, text) => files.set(file.path, text),
     create: async (path, text) => { files.set(path, text); return { path }; }, adapter: { read: async () => '' },
@@ -32,12 +34,17 @@ async function setup(running = false, note = initial) {
     __scheduleRunnerEntry: { dv: { current: () => ({ file: { folder: 'Runner' } }), container: root, el: (_, text) => { throw new Error(text); } }, app,
       moment: { utc: (value = '2026-09-29') => ({ format: () => value, isValid: () => true }) },
       Notice: class { constructor(message) { notices.push(message); } }, config: { registry: { version: 1, projects: {} } } },
-    ScheduleRunner: S, RoutineRunnerEmbed: { installStyles() {}, serializeSession: x => x, deserializeSession: x => x, runningSession: x => !!x?.running },
+    ScheduleRunner: S, RoutineRunnerEmbed: { model: E.model, createRunState: E.createRunState, renderPurgeCacheButton() {}, installStyles() {}, serializeSession: x => x, deserializeSession: x => x, runningSession: x => !!x?.running },
     document: { body, createElement: tag => new Element(tag) }, window: {}, setTimeout, clearTimeout,
   });
   return { root, body, files, notices };
 }
 (async () => {
+  const taskSource = '- [ ] Morning -- private comment ⏱️ 5:00 ➕ 2026-09-27 ^morning';
+  const linked = await setup(false, `${taskSource}\n## Plan\n- 0900 p [[#^morning]] ^p-morning\n## Actual\n- 0900 p [[#^morning]] ^a-morning-1\n`);
+  const sharedLabel = E.model(taskSource, 0).root.display;
+  assert.equal(sharedLabel, 'Morning');
+  assert(find(linked.root, x => x.tag === 'strong' && x.text === `p ${sharedLabel}`), 'Schedule card must use the shared task tree label');
   const { root, body, files } = await setup();
   assert(!byLabel(root, 'Pause'));
   assert(!byLabel(root, 'End'));

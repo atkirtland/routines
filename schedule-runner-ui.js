@@ -91,10 +91,12 @@ try {
     const lineIndex = taskLines.findIndex(x => x.match(new RegExp(`\\^${link.blockId}\\s*$`)));
     const line = lineIndex >= 0 ? taskLines[lineIndex] : "";
     const pageProject = app.metadataCache.getFileCache(target)?.frontmatter?.project || null;
-    const isTask = /^\s*[-*+]\s+\[[ xX]\]/.test(line);
-    const nested = isTask ? RRE.model(taskText, lineIndex) : null;
+    const nested = lineIndex >= 0 ? RRE.model(taskText, lineIndex) : null;
+    const isTask = !!nested;
     const hasIncompleteDescendants = !!nested?.hasIncompleteDescendants;
-    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
+    // Use the exact label parsed for the embedded task tree, including its
+    // metadata/comment rules. The fallback is only for non-task blocks.
+    return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: nested ? nested.root.display : SB.cleanTaskText(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
   // Only write coordination and view cleanup survive a Dataview re-execution.
   // Routine session data is rehydrated from schedule-runner-state.yaml below.

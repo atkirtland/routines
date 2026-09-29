@@ -11,6 +11,12 @@ assert.equal(R.parseGoalCount("Push-ups 🎯 20"), 20);
 assert.equal(R.parseGoalCount("Push-ups"), null);
 assert.equal(R.parseRoutineText("- [ ] Visible label ^native-block-id\n").tasks[0].display, "Visible label");
 assert.equal(R.parseRoutineText("- [ ] 中文任务 ^任務-1\n").tasks[0].display, "中文任务");
+const createdDateSource = "- [ ] 記錄夢 🏁 15:15 ➕ 2026-09-27 ✅ 2026-09-27 ^dream";
+const createdDateTask = R.parseRoutineText(createdDateSource).tasks[0];
+assert.equal(createdDateTask.display, "記錄夢 🏁 15:15 ✅ 2026-09-27");
+assert.equal(createdDateTask.sourceLine, createdDateSource);
+assert.equal(E.model(createdDateSource, 0).root.display, createdDateTask.display);
+assert.equal(R.parseRoutineText("- [ ] Task ➕️ 2026-09-27").tasks[0].display, "Task");
 assert.equal(R.formatDuration(65000), "1:05");
 assert.equal(R.formatDuration(-3723000), "-1:02:03");
 

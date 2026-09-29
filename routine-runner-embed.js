@@ -48,7 +48,6 @@
   function model(content, rootLine, focusLine = rootLine, defaultEstimateMs) {
     const core = requireCore();
     const parsed = core.parseRoutineText(content, defaultEstimateMs);
-    parsed.tasks.forEach(node => { node.display = node.display.replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, ""); });
     const sourceRoot = core.taskAtLine(parsed, rootLine);
     if (!sourceRoot) return null;
     const allowed = new Set(core.flatten([sourceRoot]).map(node => node.id));

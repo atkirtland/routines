@@ -77,6 +77,7 @@
       const commentParts = taskCommentParts(description);
       const label = commentParts.name + commentParts.suffix;
       const display = label.replace(TIME_GOAL_RE, "").replace(COUNT_GOAL_RE, "")
+        .replace(/➕\uFE0F?\s*\d{4}-\d{2}-\d{2}/gu, "")
         .replace(/\s+\^[\p{L}\p{N}_-]+\s*$/u, "").replace(/\s{2,}/g, " ").trim();
       const prefix = task[1].slice(0, task[1].search(/[-*+]/));
       let indent = 0;
