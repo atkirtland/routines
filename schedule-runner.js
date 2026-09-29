@@ -413,21 +413,35 @@
     });
     return result;
   }
-  function endBlock(text, actual, now = new Date(), mode = "end") {
+  function switchDepth(text, plan) {
+    if (!plan?.id || plan.role !== "main") throw new Error("Select a main block to switch to");
+    const chain = actualState(text).mainChain, ancestors = [];
+    for (let p = plan; p; p = p.parent) if (p.role === "main") ancestors.unshift(p);
+    let shared = 0;
+    while (shared < chain.length && shared < ancestors.length && chain[shared].id?.match(/^a-(.+)-\d+$/)?.[1] === slug(ancestors[shared].id)) shared++;
+    // Returning to an active ancestor starts a new occurrence of that ancestor.
+    return Math.min(shared, ancestors.length - 1);
+  }
+  function switchBlock(text, plan, now = new Date()) {
+    const depth = switchDepth(text, plan), ancestors = [];
+    for (let p = plan; p; p = p.parent) if (p.role === "main") ancestors.unshift(p);
+    let result = text;
+    ancestors.slice(depth).forEach((p, offset) => {
+      result = appendActual(result, `${"  ".repeat(depth + offset)}- ${hhmm(now)} ${p.body} ^a-${slug(p.id)}-${nextOccurrence(result, p.id)}`);
+    });
+    return result;
+  }
+  function endBlock(text, actual, now = new Date()) {
     const time = hhmm(now), state = actualState(text);
     if (!actual?.id) throw new Error("Actual blocks need a block ID; reopen Schedule Runner to assign one automatically");
     if (actual.role === "main") {
       if (state.mainLeaf?.line !== actual.line) throw new Error("A main parent cannot end while a descendant is active");
-      let result = appendActual(text, `${" ".repeat(actual.indent)}- ${time} — ^${actual.id}-end`);
-      if (mode === "pause") result = appendActual(result, `%% scheduled-block-paused: ${actual.id} %%`);
-      return result;
+      return appendActual(text, `${" ".repeat(actual.indent)}- ${time} — ^${actual.id}-end`);
     }
     const lines = text.split(/\r?\n/), current = lines[actual.line];
     if (!current || actual.end) throw new Error("Context occurrence is not running");
     lines[actual.line] = current.replace(new RegExp(`(${TIME})-`), `$1-${time}`);
-    let result = lines.join("\n");
-    if (mode === "pause") result = appendActual(result, `%% scheduled-block-paused: ${actual.id} %%`);
-    return result;
+    return lines.join("\n");
   }
   function completedPlanSlugs(text) {
     const source = String(text), completed = new Set([...source.matchAll(/%%\s*scheduled-block-ended:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
@@ -526,6 +540,6 @@
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
   return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
-    actualState, actualIntervals, validateActualIntervals, startBlock, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
+    actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, cleanTaskText, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

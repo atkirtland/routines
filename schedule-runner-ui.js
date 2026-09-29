@@ -30,6 +30,7 @@ try {
   };
 
   const root = dv.container;
+  let blockSelectorOpen = false;
   root.empty(); root.addClass("sb-root");
   const style = document.createElement("style");
   style.textContent = `.sb-root{display:grid;gap:.7em}.sb-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:.8em}.sb-active{border-color:var(--interactive-accent)}.sb-row{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}.sb-row button{padding:5px 10px}.sb-task-badge{font-size:.7em;font-weight:700;letter-spacing:.06em;padding:.15em .45em;border:1px solid var(--interactive-accent);border-radius:999px;color:var(--interactive-accent)}.sb-muted{color:var(--text-muted)}.sb-error{color:var(--color-red)}.sb-progress{height:6px;background:var(--background-modifier-border);border-radius:3px;overflow:hidden}.sb-progress i{display:block;height:100%;background:var(--interactive-accent)}.sb-indent{margin-left:calc(var(--depth)*1em)}.rr-embedded{margin-top:.65em}`;
@@ -243,6 +244,7 @@ try {
       dateInput.disabled = true;
       clearTimeout(embeddedCoordinator.saveTimer);
       selectedDate = value;
+      blockSelectorOpen = false;
       await writeEmbeddedState(embeddedStateSnapshot());
       await enqueueEmbedded(async () => { selectDailyNote(); await render(); });
     };
@@ -275,7 +277,33 @@ try {
     const repaired = SB.ensurePlanIds(text);
     if (repaired.errors.length) { repaired.errors.forEach(message => root.createEl("div", { text: message, cls: "sb-error" })); return; }
     if (repaired.changed) { await write(text, repaired.text); new Notice(`Assigned ${repaired.assigned.length} Scheduled Block ID${repaired.assigned.length === 1 ? "" : "s"}`); return; }
-    const plan = SB.parseSection(text, "Plan"), state = SB.actualState(text), dismissed = SB.dismissedPlanIds(text), completed = SB.completedPlanSlugs(text);
+    const plan = SB.parseSection(text, "Plan"), state = SB.actualState(text), dismissed = SB.dismissedPlanIds(text);
+    const planSlug = e => e.id?.replace(/^p-/, "");
+    const isActive = e => [...state.mainChain, ...state.contexts].some(a => actualPlanSlug(a) === planSlug(e));
+    const hasOccurred = e => state.section.entries.some(a => actualPlanSlug(a) === planSlug(e));
+    const routineKeyFor = e => plan.entries.find(p => planSlug(p) === actualPlanSlug(e))?.id || e.id;
+    const switchBlocked = (source, target) => SB.actualState(source).mainChain.slice(SB.switchDepth(source, target))
+      .some(e => RRE.runningSession(embeddedRuns.states[routineKeyFor(e)]));
+    const renderedPath = dailyPath;
+    const activate = target => enqueueEmbedded(async () => {
+      try {
+        if (dailyPath !== renderedPath || file?.path !== renderedPath) throw new Error("The selected daily note changed");
+        const current = await app.vault.read(file);
+        const fresh = SB.parseSection(current, "Plan").entries.find(e => e.id === target.id);
+        if (!fresh) throw new Error("This planned block no longer exists. Refresh the runner.");
+        if (fresh.role === "main" && switchBlocked(current, fresh)) throw new Error("Pause the routine timer before switching this scheduled block.");
+        if (fresh.role === "context" && SB.actualState(current).contexts.some(e => actualPlanSlug(e) === planSlug(fresh))) throw new Error("This context is already active");
+        const next = fresh.role === "main" ? SB.switchBlock(current, fresh) : SB.startBlock(current, fresh);
+        blockSelectorOpen = false;
+        await write(current, next);
+      } catch (error) { new Notice(error.message); }
+    });
+    let selector;
+    const openSwitch = () => {
+      blockSelectorOpen = true;
+      selector.hidden = false;
+      selector.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    };
     const activeIds = new Set([...state.mainChain, ...state.contexts].map(x => x.id));
     if (state.mainChain.length || state.contexts.length) {
       root.createEl("h3", { text: "Active" });
@@ -288,9 +316,16 @@ try {
         const pid = actualPlanSlug(e), planned = plan.entries.find(p => p.id && p.id.replace(/^p-/, "") === pid);
         const routineKey = planned?.id || e.id;
         const routineRunning = RRE.runningSession(embeddedRuns.states[routineKey]);
-        const stop = mode => async () => { try { await write(text, SB.endBlock(text, e, new Date(), mode)); } catch (x) { new Notice(x.message); } };
-        row.appendChild(button("End", stop("end"), routineRunning)); row.appendChild(button("Pause", stop("pause"), routineRunning));
-        if (routineRunning) card.createDiv({ cls: "sb-muted", text: "Pause the routine timer before pausing or ending this scheduled block." });
+        if (e.role === "main") row.appendChild(button("Switch block", openSwitch, routineRunning));
+        else row.appendChild(button("End", () => enqueueEmbedded(async () => {
+          try {
+            if (RRE.runningSession(embeddedRuns.states[routineKey])) throw new Error("Pause the routine timer first.");
+            const current = await app.vault.read(file), fresh = SB.actualState(current).contexts.find(a => a.id === e.id);
+            if (!fresh) throw new Error("This context is no longer active.");
+            await write(current, SB.endBlock(current, fresh));
+          } catch (x) { new Notice(x.message); }
+        }), routineRunning));
+        if (routineRunning) card.createDiv({ cls: "sb-muted", text: "Pause the routine timer before switching or ending this scheduled block." });
         const progress = planned && SB.progressFor(planned, e, new Date());
         if (progress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${progress.percent}%`; if (progress.overrun) card.createDiv({ text: `Overrun ${progress.overrun}m`, cls: "sb-error" }); }
         await addEmbeddedRoutine(card, evidence, routineKey);
@@ -328,11 +363,20 @@ try {
         const end = row.createEl("button", { text: e.end }); end.onclick = () => editTime(text, e, "end");
       }
     }
-    root.createEl("h3", { text: "Plan" });
-    if (plan.start < 0) root.createEl("div", { text: "Add a ## Plan section to the selected note.", cls: "sb-muted" });
+    if (!state.mainLeaf) {
+      const selectionControls = root.createDiv({ cls: "sb-row" });
+      selectionControls.appendChild(button("Select time block", openSwitch));
+    }
+    selector = root.createDiv({ cls: "sb-block-selector" });
+    selector.hidden = !!state.mainLeaf && !blockSelectorOpen;
+    selector.createEl("h3", { text: "Select time block" });
+    selector.createEl("p", { text: "The current block stays active until you choose its replacement. Contexts run alongside it.", cls: "sb-muted" });
+    selector.appendChild(button("Cancel", () => { blockSelectorOpen = false; selector.hidden = true; }));
+    selector.createEl("h4", { text: "Plan / active ancestors" });
+    if (plan.start < 0) selector.createEl("div", { text: "Add a ## Plan section to the selected note.", cls: "sb-muted" });
     const nowHHMM = SB.hhmm(new Date());
-    for (const e of plan.entries.filter(x => x.role !== "boundary" && !dismissed.has(x.id) && !completed.has(x.id?.replace(/^p-/, "")))) {
-      const card = root.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
+    for (const e of plan.entries.filter(x => x.role !== "boundary" && !dismissed.has(x.id) && (!hasOccurred(x) || isActive(x)))) {
+      const card = selector.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
       const row = card.createEl("div", { cls: "sb-row" });
       const requirement = SB.inheritedRequirement(e, registry), evidence = await taskEvidence(e.body);
       addBodyLabel(row, e.body, evidence); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
@@ -346,27 +390,46 @@ try {
           row.appendChild(button("Done", () => completeTask(text, evidence), evidence.completed || evidence.lineIndex < 0 || descendantBlocked || evidence.hasIncompleteDescendants));
         }
       }
-      let blocked = false;
-      if (e.role === "main" && state.mainChain.length) {
-        const wanted = []; for (let p = e; p; p = p.parent) if (p.role === "main") wanted.unshift(String(p.id || "").replace(/^p-/, ""));
-        const active = state.mainChain.map(x => x.id?.match(/^a-(.+)-\d+$/)?.[1]);
-        blocked = active.some((id, i) => wanted[i] !== id) || active.length >= wanted.length;
-      }
+      const blocked = e.role === "main" && switchBlocked(text, e);
       const occurred = new RegExp(`\\^a-${e.id.replace(/^p-/, "")}-\\d+\\b`).test(text);
       const active = [...state.mainChain, ...state.contexts].some(a => actualPlanSlug(a) === e.id.replace(/^p-/, ""));
       const missed = !occurred && !active && e.start < nowHHMM;
-      row.appendChild(button(occurred ? "Resume" : missed ? "Start late" : "Start", async () => { try { await write(text, SB.startBlock(text, e)); } catch (x) { new Notice(x.message); } }, blocked || active));
+      const activeLeafOrContext = active && (e.role === "context" || routineKeyFor(state.mainLeaf || {}) === e.id);
+      row.appendChild(button(e.role === "main" && state.mainChain.length ? "Switch here" : missed ? "Start late" : "Start", () => activate(e), blocked || activeLeafOrContext));
       if (missed) row.appendChild(button("Dismiss", async () => { try { await write(text, SB.dismissBlock(text, e)); } catch (x) { new Notice(x.message); } }));
       const scheduledProgress = e.role === "context" && e.end ? SB.progressFor(e, null, new Date()) : null;
       if (scheduledProgress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${scheduledProgress.percent}%`; }
       if (evidence?.isTask && evidence.lineIndex >= 0 && !active) await addEmbeddedRoutine(card, evidence, e.id);
     }
-    const tools = root.createEl("div", { cls: "sb-row" });
-    tools.appendChild(button("New context", async () => {
-      const body = await textPicker("Unplanned context description"); if (!body) return;
-      const id = SB.randomBlockId("a", text);
-      await write(text, SB.appendActual(text, `- ${SB.hhmm(new Date())}- ${body} ^${id}`));
-    }));
+    const endedBlocks = plan.entries.filter(e => e.role !== "boundary" && hasOccurred(e) && !isActive(e));
+    if (endedBlocks.length) {
+      selector.createEl("h4", { text: "Ended blocks" });
+      for (const e of endedBlocks) {
+        const row = selector.createDiv({ cls: "sb-row" });
+        addBodyLabel(row, e.body, await taskEvidence(e.body));
+        row.appendChild(button("Restart", () => activate(e), e.role === "main" && switchBlocked(text, e)));
+      }
+    }
+    selector.createEl("h4", { text: "Unplanned block" });
+    const description = selector.createEl("input", { type: "text", placeholder: "Block description", value: "" });
+    description.setAttribute("aria-label", "Unplanned block description");
+    const tools = selector.createDiv({ cls: "sb-row" });
+    const startUnplanned = context => enqueueEmbedded(async () => {
+      try {
+        if (dailyPath !== renderedPath) throw new Error("The selected daily note changed");
+        const body = description.value.trim();
+        if (!body) throw new Error("Enter a block description first.");
+        if (/[\r\n]/.test(body)) throw new Error("Use a single-line block description.");
+        const current = await app.vault.read(file);
+        if (!context && SB.actualState(current).mainChain.some(e => RRE.runningSession(embeddedRuns.states[routineKeyFor(e)])))
+          throw new Error("Pause the routine timer before switching this scheduled block.");
+        const id = SB.randomBlockId("a", current);
+        blockSelectorOpen = false;
+        await write(current, SB.appendActual(current, `- ${SB.hhmm(new Date())}${context ? "-" : ""} ${body} ^${id}`));
+      } catch (error) { new Notice(error.message); }
+    });
+    tools.appendChild(button("Start new block", () => startUnplanned(false), state.mainChain.some(e => RRE.runningSession(embeddedRuns.states[routineKeyFor(e)]))));
+    tools.appendChild(button("Start new context", () => startUnplanned(true)));
   }
   await writeEmbeddedState(embeddedStateSnapshot());
   await render();

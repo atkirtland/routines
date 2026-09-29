@@ -30,7 +30,7 @@ All timestamps and the reusable time editor use UTC. Start times and completed c
 
 `HHMM` starts a main block. `HHMM-HHMM` is an anchored context, `HHMM-` is a running Actual context, and `HHMM —` is an explicit main boundary. A `+duration` main timer begins at its actual Start; a context range remains tied to its scheduled clock times. Main blocks use transitions/boundaries—not ranges—for exact allocations.
 
-The runner enforces one active main ancestor-to-leaf chain. A Start click on a nested main block records its missing ancestors in the same write. Starting a different main leaf is disabled until the active leaf is explicitly ended. A parent cannot end with an active descendant. Contexts are independent and may overlap the main chain and one another. The schedule block's Pause closes the current occurrence and Resume creates another. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done.
+The runner enforces one active main ancestor-to-leaf chain. **Switch block** reveals the same inline **Select time block** view used for starting work—there is no separate popup. It contains planned blocks, active ancestors, ended planned blocks with Restart controls, and an inline description field for unplanned work. **Start new block** replaces the main chain; **Start new context** starts overlapping activity without ending main work. Opening or cancelling selection leaves the current block running. Choosing a replacement appends its start to Actual; this implicitly ends the replaced interval without a boundary or pause marker. Starting a child preserves its ancestors; switching to a sibling preserves their shared ancestors; returning to an ancestor starts a new occurrence of that ancestor. Restarts preserve the Plan ID's routine session. Pause any affected routine timers before switching away. Contexts remain independent and use End to fill in their inline end time. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done. Existing boundaries and legacy pause markers remain readable.
 
 Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs receive random ASCII-only IDs in one guarded write; existing IDs are preserved, generated collisions are avoided, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<random-plan-token>-<occurrence>`. The runner can also create running, unplanned contexts with standalone random ASCII IDs.
 
@@ -67,16 +67,17 @@ For linked block tasks, the runner loads the canonical task, applies inline-over
 
 ## Runner and validation states
 
-The prototype only mutates Markdown after explicit Start, End, start-time edit, or Undo clicks. End appends a boundary for main work and closes `HHMM-` in place for context work. It creates `## Actual` when required, and all generated entries are inserted before the next heading so later daily-note sections remain outside Actual. The latest generated mutation has a configurable ten-second Undo, applied only if the complete generated slice still matches; unrelated or manually edited content is not removed.
+Schedule mutations require explicit Start, Switch, Restart, context End, time edit, Dismiss, or Undo actions (apart from missing-ID repair). Main switches append starts; context End closes `HHMM-` in place. The runner creates `## Actual` when required, and all generated entries are inserted before the next heading so later daily-note sections remain outside Actual. The latest generated mutation has a configurable ten-second Undo, applied only if the complete generated slice still matches; unrelated or manually edited content is not removed.
 
 The pure core in `schedule-runner.js` exposes parsing, registry validation, three-state classification, state reconstruction, transactional Start/End transforms, inline task resolution, and guarded Undo. Run its regression tests with:
 
 ```sh
 node tests/schedule-runner.test.js
 node tests/schedule-runner.integration.test.js
+node tests/schedule-runner-switch.test.js
 node tests/routine-runner.test.js
 ```
 
-Done is separate from End. Task Done changes the canonical task checkbox only; it never ends, pauses, or otherwise rewrites an Actual occurrence. End and the schedule block's Pause remain the only controls for closing schedule intervals.
+Task Done changes the canonical task checkbox only; it never rewrites an Actual occurrence. Schedule switching and context End are independent of routine completion and routine Pause/Resume.
 
 When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, editable count goals, Pause/Resume, Skip, Done, the right-click Tasks-status menu, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. Embedded state is persisted by canonical task link and its timer requests a screen wake lock. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, status discovery, result formatting, and completion, while retaining independent timer state.
