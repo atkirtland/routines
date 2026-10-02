@@ -368,14 +368,6 @@
     else lines.splice(insert, 0, line);
     return lines.join("\n").replace(/\s*$/, "") + "\n";
   }
-  function dismissedPlanIds(text) {
-    return new Set([...String(text).matchAll(/%%\s*scheduled-block-dismissed:\s*([\p{L}\p{N}_-]+)\s*%%/gu)].map(m => m[1]));
-  }
-  function dismissBlock(text, plan) {
-    if (!plan?.id) throw new Error("Planned blocks need a block ID");
-    if (dismissedPlanIds(text).has(plan.id)) return text;
-    return appendActual(text, `%% scheduled-block-dismissed: ${plan.id} %%`);
-  }
   function taskLink(body) {
     const match = String(body || "").match(/\[\[([^#\]|]*)#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/u);
     return match ? { path: match[1].trim(), blockId: match[2] } : null;
@@ -534,6 +526,6 @@
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
   return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
-    actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, dismissBlock, dismissedPlanIds, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
+    actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

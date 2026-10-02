@@ -368,8 +368,7 @@
   }
 
   function renderPurgeCacheButton(container, options = {}) {
-    const tools = container.createDiv({ cls: "rr-cache-tools" });
-    const button = tools.createEl("button", { cls: "rr-tool-btn rr-purge-btn", text: options.label || "Purge cache" });
+    const button = container.createEl("button", { cls: "rr-tool-btn rr-purge-btn", text: options.label || "Purge cache" });
     button.addEventListener("click", async () => {
       button.disabled = true;
       try { await options.onPurge?.(); }
@@ -1118,6 +1117,21 @@
       const selectedCount = state.selected.length;
       const start = header.createEl("button", { cls: "rr-btn rr-btn-primary", text: selectedCount ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})` : "Select at least one leaf task" });
       start.disabled = !selectedCount;
+      const selectionTree = container.createDiv({ cls: "rr-selection-tree" });
+      if (options.selectionCollapsible) {
+        state.selectionTreeOpen = state.selectionTreeOpen === true;
+        selectionTree.hidden = !state.selectionTreeOpen;
+        const toggle = header.createEl("button", { cls: "rr-btn", text: state.selectionTreeOpen ? "Hide task tree" : "Show task tree" });
+        toggle.setAttribute("aria-expanded", String(state.selectionTreeOpen));
+        toggle.addEventListener("click", () => {
+          state.selectionTreeOpen = !state.selectionTreeOpen;
+          selectionTree.hidden = !state.selectionTreeOpen;
+          toggle.textContent = state.selectionTreeOpen ? "Hide task tree" : "Show task tree";
+          toggle.setAttribute("aria-expanded", String(state.selectionTreeOpen));
+          notify();
+        });
+      }
+      options.renderSelectionActions?.(header);
       start.addEventListener("click", () => {
         primeDurationSound();
         syncSelection();
@@ -1145,7 +1159,7 @@
         state.screen = "run"; notify();
         if (options.onRefresh) options.onRefresh(); else renderSession(container, options);
       });
-      renderSelection(container, {
+      renderSelection(selectionTree, {
         app: options.app,
         state,
         tasks: selectionTasks,

@@ -176,14 +176,18 @@ try {
       Object.keys(runState).forEach(key => delete runState[key]);
       Object.assign(runState, fresh, { screen });
     };
-    RRE.renderPurgeCacheButton(host, {
+    const purgeOptions = {
       onPurge: async () => {
         delete embeddedRuns.states[sessionKey];
         await writeEmbeddedState(embeddedStateSnapshot());
         new Notice("Scheduled routine cache purged");
         await enqueueEmbedded(render);
       },
-    });
+    };
+    if (runState.screen !== "select" && runState.screen !== "ready") {
+      const cacheTools = host.createDiv({ cls: "rr-cache-tools" });
+      RRE.renderPurgeCacheButton(cacheTools, purgeOptions);
+    }
     const sessionHost = host.createDiv({ cls: "rr-session" });
     if (runState.screen === "ready") {
       // Migrate the former launcher screen directly to the shared task
@@ -213,6 +217,8 @@ try {
       onDelete: task => enqueueEmbedded(() => RRE.deleteTask(app, evidence.target, task)),
       onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
+      selectionCollapsible: true,
+      renderSelectionActions: header => RRE.renderPurgeCacheButton(header, purgeOptions),
       summaryActionLabel: "Back to task selection",
       onSummaryAction: () => {
         resetRunState("select");
@@ -302,7 +308,7 @@ try {
     const repaired = SB.ensurePlanIds(text);
     if (repaired.errors.length) { repaired.errors.forEach(message => root.createEl("div", { text: message, cls: "sb-error" })); return; }
     if (repaired.changed) { await write(text, repaired.text); new Notice(`Assigned ${repaired.assigned.length} Scheduled Block ID${repaired.assigned.length === 1 ? "" : "s"}`); return; }
-    const plan = SB.parseSection(text, "Plan"), state = SB.actualState(text), dismissed = SB.dismissedPlanIds(text);
+    const plan = SB.parseSection(text, "Plan"), state = SB.actualState(text);
     const planSlug = e => e.id?.replace(/^p-/, "");
     const isActive = e => [...state.mainChain, ...state.contexts].some(a => actualPlanSlug(a) === planSlug(e));
     const hasOccurred = e => state.section.entries.some(a => actualPlanSlug(a) === planSlug(e));
@@ -397,10 +403,12 @@ try {
     selector.createEl("h3", { text: "Select time block" });
     selector.createEl("p", { text: "The current block stays active until you choose its replacement. Contexts run alongside it.", cls: "sb-muted" });
     selector.appendChild(button("Cancel", () => { blockSelectorOpen = false; selector.hidden = true; }));
-    selector.createEl("h4", { text: "Plan / active ancestors" });
+    selector.createEl("h4", { text: "Upcoming / active blocks" });
     if (plan.start < 0) selector.createEl("div", { text: "Add a ## Plan section to the selected note.", cls: "sb-muted" });
     const nowHHMM = SB.hhmm(new Date());
-    for (const e of plan.entries.filter(x => x.role !== "boundary" && !dismissed.has(x.id) && (!hasOccurred(x) || isActive(x)))) {
+    const selectable = plan.entries.filter(x => x.role !== "boundary" && (!hasOccurred(x) || isActive(x)));
+    const isPast = e => !isActive(e) && e.start < nowHHMM;
+    const renderChoice = async e => {
       const card = selector.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
       const row = card.createEl("div", { cls: "sb-row" });
       const requirement = SB.inheritedRequirement(e, registry), evidence = await taskEvidence(e.body);
@@ -421,10 +429,15 @@ try {
       const missed = !occurred && !active && e.start < nowHHMM;
       const activeLeafOrContext = active && (e.role === "context" || routineKeyFor(state.mainLeaf || {}) === e.id);
       row.appendChild(button(e.role === "main" && state.mainChain.length ? "Switch here" : missed ? "Start late" : "Start", () => activate(e), blocked || activeLeafOrContext));
-      if (missed) row.appendChild(button("Dismiss", async () => { try { await write(text, SB.dismissBlock(text, e)); } catch (x) { new Notice(x.message); } }));
       const scheduledProgress = e.role === "context" && e.end ? SB.progressFor(e, null, new Date()) : null;
       if (scheduledProgress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${scheduledProgress.percent}%`; }
       if (evidence?.isTask && evidence.lineIndex >= 0 && !active) await addEmbeddedRoutine(card, evidence, e.id);
+    };
+    for (const e of selectable.filter(e => !isPast(e))) await renderChoice(e);
+    const pastChoices = selectable.filter(isPast);
+    if (pastChoices.length) {
+      selector.createEl("h4", { text: "Earlier blocks" });
+      for (const e of pastChoices) await renderChoice(e);
     }
     const endedBlocks = plan.entries.filter(e => e.role !== "boundary" && hasOccurred(e) && !isActive(e));
     if (endedBlocks.length) {

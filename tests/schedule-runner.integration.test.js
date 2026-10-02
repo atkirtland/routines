@@ -57,7 +57,7 @@ assert.match(scheduleUi, /await ensureEmbeddedState\(\)/, "An active scheduled t
 assert.match(scheduleUi, /typeof embeddedCoordinator\.actionTail\.then/, "A preserved pre-upgrade coordinator must regain its action queue");
 assert.doesNotMatch(scheduleUi, /embeddedRuns\.loaded/, "Every Dataview execution must rehydrate scheduled routine state from YAML");
 assert.match(scheduleUi, /const embeddedRuns = \{ states: \{\}, legacy: \{\} \}/, "Scheduled routine session data must not live in the global coordinator");
-assert.match(sharedRoutineUi, /renderSelection\(container, \{/, "Scheduled sessions must use the shared task-selection UI");
+assert.match(sharedRoutineUi, /renderSelection\(selectionTree, \{/, "Scheduled sessions must use the shared task-selection UI");
 assert.match(sharedRoutineUi, /renderRunCard\(container, \{/, "Scheduled sessions must use the shared run-card UI");
 assert.match(sharedRoutineUi, /state\.sessions = \{\}/, "Starting a new selected run must not reuse a paused clock from a stopped run");
 assert.match(sharedRoutineUi, /summaryActionLabel/, "The shared summary must expose its host-provided action");
@@ -66,9 +66,17 @@ assert.match(scheduleUi, /delete embeddedRuns\.states\[sessionKey\]/, "Scheduled
 assert.match(scheduleUi, /file \|\| app\.vault\.getAbstractFileByPath\(dailyPath\)/, "Current-note task links must resolve against the Daily Note");
 assert.doesNotMatch(scheduleUi, /text: "Begin tasks"/, "Scheduled tasks must show selection without an intermediate launcher");
 assert.match(scheduleUi, /screen: "select"/, "A new scheduled task session must open on the shared selection screen");
+assert.match(scheduleUi, /selectionCollapsible: true/, "Scheduled task selection must opt into the collapsible task tree");
+assert.match(sharedRoutineUi, /Show task tree/, "The shared selector must offer a task-tree visibility toggle");
+assert.match(sharedRoutineUi, /selectionTree\.hidden = !state\.selectionTreeOpen/, "Scheduled task trees must be hidden by default");
+assert.match(sharedRoutineUi, /renderSelectionActions\?\.\(header\)/, "Selection hosts must be able to add inline routine actions");
+assert.match(scheduleUi, /renderSelectionActions: header => RRE\.renderPurgeCacheButton\(header, purgeOptions\)/, "Scheduled purge must sit beside the routine selection controls");
 assert.match(scheduleUi, /summaryActionLabel: "Back to task selection"/, "A scheduled summary must return to task selection");
 assert.match(scheduleUi, /resetRunState\("select"\)/, "Leaving a scheduled summary must reset it to task selection");
 assert.doesNotMatch(scheduleUi, /includeCompleted: true/, "Scheduled selection must filter completed leaves like standalone Routine Runner");
+assert.doesNotMatch(scheduleUi, /Dismiss|dismissBlock|dismissedPlanIds/, "Block selection must not offer or persist dismissal");
+assert.match(scheduleUi, /Upcoming \/ active blocks/, "Upcoming choices must be shown first");
+assert.match(scheduleUi, /Earlier blocks/, "Past unstarted choices must move below upcoming choices");
 assert.match(sharedRoutineUi, /style\.textContent = SHARED_CSS/, "Reloading either host must refresh the shared runner CSS");
 assert(!scheduleUi.includes("localStorage"), "Schedule runner state must not share browser-local storage");
 assert(!scheduleUi.includes("SB.doneTaskActuals"), "Task Done must not mutate Actual");

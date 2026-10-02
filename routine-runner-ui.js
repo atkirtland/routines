@@ -585,7 +585,8 @@ function render() {
   refs.sharedDispose?.();
   container.empty();
   refs = {};
-  RRE.renderPurgeCacheButton(container, {
+  const cacheTools = container.createDiv({ cls: "rr-cache-tools" });
+  RRE.renderPurgeCacheButton(cacheTools, {
     onPurge: async () => {
       await enqueueAction(resetMissingCache);
       new Notice("Routine Runner cache purged");
