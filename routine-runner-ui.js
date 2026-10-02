@@ -382,6 +382,13 @@ function enabledLeaves(nodes) {
   return RR.enabledLeaves(nodes);
 }
 
+function readyParents(nodes = state.runTasks, retired = new Set(state.retiredIds)) {
+  const runMap = nodeMap(nodes);
+  const sourceRoots = state.allTasks.filter(node => !node.parentId);
+  return RR.readyParents(sourceRoots, node => node.checked,
+    node => runMap.has(node.id) && !retired.has(node.id)).map(node => runMap.get(node.id));
+}
+
 function selectedRoutineTree(nodes) {
   return RR.selectedRoutineTree(nodes);
 }
@@ -870,10 +877,12 @@ function renderRun() {
   const runLabel = currentSectionLabel();
   const path = taskPath(map.get(state.activeLeafId), map);
   const view = RRE.renderRunCard(container, {
-    app, task, session, path, redrawIntervalMs: REDRAW_INTERVAL_MS,
+    app, task, taskKey: task.id, session, path, redrawIntervalMs: REDRAW_INTERVAL_MS,
     timing: state.timing || (state.timing = {}),
     onRefresh: () => enqueueAction(async () => { render(); await queueSave(); }),
-    progressLabel: `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
+    progressLabel: task.children.length
+      ? `All child tasks have a status — mark a status for this parent — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`
+      : `Leaf ${state.processedLeafCount + 1} of ${state.totalLeafCount} — ${state.file.basename}${runLabel ? " › " + runLabel : ""}`,
     onStop: () => enqueueAction(async () => { RRE.setRunnerMode(state.timing, "stopped"); await stopRoutine(); }),
     onFocus: part => enqueueAction(() => focusTask(part.id)),
     onStateChange: scheduleCountSave,
@@ -955,7 +964,7 @@ async function advance(wasDone, undo = null) {
   state.actionHistory.push({ key: focused.id, kind: wasDone ? "done" : "skip", retiredKeys: [...branchIds], affected: affectedLeaves.length, undo });
   state.processedLeafCount += affectedLeaves.length;
   state.retiredIds = [...retired];
-  const next = leaves.find((leaf) => !retired.has(leaf.id));
+  const next = readyParents(state.runTasks, retired)[0] || leaves.find((leaf) => !retired.has(leaf.id));
   if (next) {
     state.index++;
     state.activeLeafId = next.id;
@@ -1006,9 +1015,18 @@ async function completeCurrentTask(selectedStatus = null) {
   }
 
   // Both hosts use the same Tasks-plugin transformation and 🏁/🥅 result metadata.
+  const elapsedMs = task.children.length
+    ? RRE.subtreeElapsedTotal(state, task, node => node.id)
+    : elapsedForSession(session);
   const transaction = await RRE.completeTaskTransaction(app, state.file, content, task.line, selectedStatus, {
-    elapsedMs: elapsedForSession(session), count: session.count, goalCount: task.goalCount,
+    elapsedMs, count: session.count, goalCount: task.goalCount,
   });
+  const completedLine = transaction.undo.afterLines[0];
+  const completedStatus = completedLine.match(RR.TASK_LINE_RE)?.[2] ?? " ";
+  for (const copy of [task, ...state.allTasks.filter(node => node.id === task.id)]) {
+    copy.checked = completedStatus !== " ";
+    copy.sourceLine = completedLine;
+  }
   const nextContent = transaction.content;
   const shift = nextContent.split(/\r?\n/).length - lines.length;
   if (shift !== 0) {

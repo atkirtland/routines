@@ -26,6 +26,25 @@ const E = require(path.join(__dirname, "..", "routine-runner-embed.js"));
   assert.deepEqual(E.runnerTotals(restored.timing, 30000), { elapsedMs: 10000, unassignedMs: 5000 });
 }
 
+// Parent roll-ups include descendant task sessions, direct parent work, and
+// unassigned time recorded while any task in that subtree was paused.
+{
+  const child = { id: "child", children: [] };
+  const parent = { id: "parent", children: [child] };
+  const rollup = {
+    sessions: {
+      child: { elapsedBeforeStartMs: 3000, startedAt: null },
+      parent: { elapsedBeforeStartMs: 2000, startedAt: null },
+    },
+    timing: { mode: "stopped", unassignedByTask: { child: 4000, elsewhere: 9000 } },
+  };
+  assert.equal(E.subtreeElapsedTotal(rollup, parent, node => node.id, 10000), 9000);
+  assert.equal(E.subtreeElapsedTotal(rollup, child, node => node.id, 10000), 7000);
+  const active = { sessions: { child: { elapsedBeforeStartMs: 3000, startedAt: null } }, timing: {} };
+  E.setRunnerMode(active.timing, "unassigned", 1000, "child");
+  assert.equal(E.subtreeElapsedTotal(active, child, node => node.id, 5000), 7000);
+}
+
 assert.equal(R.parseEstimateMs("Stretch"), 0);
 assert.equal(R.parseEstimateMs("Stretch ⏱️ 10:05"), 605000);
 assert.equal(R.parseEstimateMs("Long ⏱️ 1:02:03"), 3723000);
@@ -85,6 +104,16 @@ assert.equal(R.fuzzyScore("xyz", "Parent"), -1);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: 1000, startedAt: 5000 }, 8000), 4000);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: undefined, startedAt: "5000" }, 8000), 3000);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: "1000", startedAt: null }, 8000), 1000);
+
+const statusTree = R.parseRoutineText(`- [ ] Grandparent
+  - [ ] Parent
+    - [x] Done
+    - [-] Cancelled
+  - [/] In progress
+`).tasks.filter(task => !task.parentId);
+assert.deepEqual(R.readyParents(statusTree).map(task => task.display), ["Parent"]);
+statusTree[0].children[0].checked = true;
+assert.deepEqual(R.readyParents(statusTree).map(task => task.display), ["Grandparent"]);
 
 const embedded = E.model(`# Before
 - [ ] Morning routine ^morning-routine

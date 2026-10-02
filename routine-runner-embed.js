@@ -245,19 +245,34 @@
     return Object.values(state?.sessions || {}).reduce((sum, session) => sum + requireCore().elapsedForSession(session, now), 0);
   }
 
-  function setRunnerMode(timing, mode, now = Date.now()) {
+  function setRunnerMode(timing, mode, now = Date.now(), unassignedKey = timing.unassignedKey) {
     if (timing.since != null && (timing.mode === "task" || timing.mode === "unassigned")) {
       const field = timing.mode === "task" ? "taskMs" : "unassignedMs";
-      timing[field] = (timing[field] || 0) + Math.max(0, now - timing.since);
+      const elapsed = Math.max(0, now - timing.since);
+      timing[field] = (timing[field] || 0) + elapsed;
+      if (timing.mode === "unassigned" && timing.unassignedKey) {
+        timing.unassignedByTask = timing.unassignedByTask || {};
+        timing.unassignedByTask[timing.unassignedKey] = (timing.unassignedByTask[timing.unassignedKey] || 0) + elapsed;
+      }
     }
     timing.mode = mode;
     timing.since = now;
+    if (mode === "unassigned") timing.unassignedKey = unassignedKey;
   }
 
   function runnerTotals(timing, now = Date.now()) {
-    const snapshot = { ...timing };
+    const snapshot = { ...timing, unassignedByTask: { ...(timing.unassignedByTask || {}) } };
     setRunnerMode(snapshot, snapshot.mode, now);
     return { elapsedMs: (snapshot.taskMs || 0) + (snapshot.unassignedMs || 0), unassignedMs: snapshot.unassignedMs || 0 };
+  }
+
+  function subtreeElapsedTotal(state, node, keyOf, now = Date.now()) {
+    const keys = new Set(requireCore().flatten([node]).map(keyOf));
+    const taskMs = [...keys].reduce((sum, key) => sum + requireCore().elapsedForSession(state.sessions?.[key], now), 0);
+    const timing = { ...(state.timing || {}), unassignedByTask: { ...(state.timing?.unassignedByTask || {}) } };
+    if (timing.mode === "unassigned") setRunnerMode(timing, "unassigned", now);
+    const unassignedMs = [...keys].reduce((sum, key) => sum + (timing.unassignedByTask?.[key] || 0), 0);
+    return taskMs + unassignedMs;
   }
 
   function toggleRunnerPause(timing, session, now = Date.now()) {
@@ -481,7 +496,7 @@
     const task = options.task;
     const session = options.session;
     const timing = options.timing || {};
-    if (timing.mode !== "break") setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task");
+    if (timing.mode !== "break") setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task", Date.now(), options.taskKey);
     const header = container.createDiv({ cls: "rr-header rr-embedded-header" });
     header.createDiv({ cls: "rr-progress-label", text: options.progressLabel });
     const stop = header.createEl("button", { cls: "rr-btn-stop", text: "Stop" });
@@ -577,7 +592,7 @@
     const pause = buttons.createEl("button", { cls: "rr-btn", text: session.startedAt == null ? "Resume" : "Pause" });
     pause.disabled = timing.mode === "break";
     pause.title = "Pause only this task; runner time continues as unassigned time";
-    pause.addEventListener("click", () => { options.onPause?.(); setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task"); pause.textContent = session.startedAt == null ? "Resume" : "Pause"; repaint(); changed(); });
+    pause.addEventListener("click", () => { options.onPause?.(); setRunnerMode(timing, session.startedAt == null ? "unassigned" : "task", Date.now(), options.taskKey); pause.textContent = session.startedAt == null ? "Resume" : "Pause"; repaint(); changed(); });
     const skip = buttons.createEl("button", { cls: "rr-btn", text: "Skip" });
     skip.addEventListener("click", () => { dispose(); options.onSkip?.(); });
     const done = buttons.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Done" });
@@ -623,8 +638,13 @@
     const orderIndex = new Map((state.order || []).map((key, index) => [key, index]));
     const leaves = all.filter(node => !node.children.length && !isDone(node))
       .sort((a, b) => (orderIndex.get(keyOf(a)) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(keyOf(b)) ?? Number.MAX_SAFE_INTEGER));
+    const readyParents = core.readyParents(fileAll.filter(node => !node.parentId), node => node.checked,
+      node => byKey.has(core.taskPath(node, fileMap).map(part => part.display).join("\u0000")))
+      .map(node => byKey.get(core.taskPath(node, fileMap).map(part => part.display).join("\u0000")))
+      .filter(node => node && !retired.has(keyOf(node)));
     let activeLeaf = byKey.get(state.activeLeafKey);
-    if (!activeLeaf || activeLeaf.children.length || isDone(activeLeaf)) activeLeaf = leaves[0] || null;
+    const activeIsReadyParent = activeLeaf?.children.length && readyParents.includes(activeLeaf);
+    if (!activeLeaf || isDone(activeLeaf) || (activeLeaf.children.length && !activeIsReadyParent)) activeLeaf = readyParents[0] || leaves[0] || null;
     if (!activeLeaf) {
       container.createDiv({ cls: "rr-embedded-done", text: "Routine complete 🎉" });
       container.createDiv({ cls: "rr-embedded-progress", text: `${state.processedCount || 0} processed; ${state.completedCount || 0} completed.` });
@@ -663,7 +683,8 @@
       core.flatten([focus]).forEach(node => retired.add(keyOf(node)));
       state.retired = [...retired]; options.onStateChange?.(state);
       try {
-        const undo = await options.onComplete?.(focus.line, { elapsedMs: core.elapsedForSession(session), count: session.count, goalCount: focus.goalCount }, status, keyOf(focus));
+        const elapsedMs = focus.children.length ? subtreeElapsedTotal(state, focus, keyOf) : core.elapsedForSession(session);
+        const undo = await options.onComplete?.(focus.line, { elapsedMs, count: session.count, goalCount: focus.goalCount }, status, keyOf(focus));
         state.actionHistory = [...(state.actionHistory || []), { key: keyOf(focus), kind: "done", retiredKeys: core.flatten([focus]).map(keyOf), affected, undo: undo || null }];
         options.onStateChange?.(state);
         if (options.onRefresh) options.onRefresh(); else renderRunner(container, options);
@@ -675,11 +696,13 @@
       }
     };
     const view = renderRunCard(container, {
-      app: options.app, task: focus, session, path: activePath,
+      app: options.app, task: focus, taskKey: keyOf(focus), session, path: activePath,
       timing: state.timing || (state.timing = { taskMs: sessionElapsedTotal(state) }),
       onRefresh: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
       redrawIntervalMs: options.redrawIntervalMs,
-      progressLabel: `Leaf ${Math.max(1, (state.processedCount || 0) + 1)} of ${state.totalLeafCount || leaves.length}`,
+      progressLabel: focus.children.length
+        ? "All child tasks have a status — mark a status for this parent"
+        : `Leaf ${Math.max(1, (state.processedCount || 0) + 1)} of ${state.totalLeafCount || leaves.length}`,
       onStop: () => {
         setRunnerMode(state.timing, "stopped");
         Object.values(state.sessions || {}).forEach(value => settle(value));
@@ -833,7 +856,10 @@
 
     const stableRoots = state.runTree?.length ? state.runTree : [current.root];
     const stableLeaves = enabledLeaves(stableRoots);
-    if (state.screen === "summary" || !stableLeaves.some(node => !new Set(state.retired).has(node._runKey || keyOf(node)))) {
+    const stableKeys = new Set(core.flatten(stableRoots).map(node => node._runKey || keyOf(node)));
+    const hasReadyParent = core.readyParents([current.root], node => node.checked,
+      node => stableKeys.has(keyOf(node))).length > 0;
+    if (state.screen === "summary" || (!hasReadyParent && !stableLeaves.some(node => !new Set(state.retired).has(node._runKey || keyOf(node))))) {
       if (!state.summary) {
         if (state.timing) setRunnerMode(state.timing, "stopped");
         state.summary = { ...(state.timing ? runnerTotals(state.timing) : { elapsedMs: sessionElapsedTotal(state) }), processedCount: state.processedCount || 0, completedCount: state.completedCount || 0, totalLeafCount: state.totalLeafCount || 0 };
@@ -851,7 +877,7 @@
   }
 
   return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
-    setRunnerMode, runnerTotals, toggleRunnerPause,
+    setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
     lineForKey, rewindTitle, confirmRewind, renderRunner, renderSession };

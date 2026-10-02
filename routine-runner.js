@@ -184,6 +184,13 @@
   function availableLeaves(root) {
     return root ? flatten([root]).filter(node => !node.checked && node.children.every(child => child.checked)) : [];
   }
+  // An unfinished parent becomes actionable only after every direct child has
+  // acquired a checkbox status. Since `checked` means "symbol is not a space",
+  // this includes Tasks statuses such as [x], [-], and [/].
+  function readyParents(nodes, isMarked = node => node.checked, isEligible = () => true) {
+    return flatten(nodes).filter(node => node.children.length && !isMarked(node)
+      && isEligible(node) && node.children.every(isMarked));
+  }
   function elapsedForSession(session, now = Date.now()) {
     if (!session) return 0;
     const elapsedBeforeStartMs = Number(session.elapsedBeforeStartMs) || 0;
@@ -196,5 +203,5 @@
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,
     parseEstimateMs, parseGoalCount, taskCommentParts, taskDisplay, normalizeTaskKey, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
     sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree,
-    taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, elapsedForSession };
+    taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, readyParents, elapsedForSession };
 });

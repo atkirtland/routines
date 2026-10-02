@@ -81,6 +81,16 @@ node tests/routine-runner.test.js
 Task Done changes the canonical task checkbox only; it never rewrites an Actual occurrence. Schedule switching and context End are independent of routine completion and routine Pause/Resume.
 
 When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, editable count goals, Pause/Resume, Skip, Done, the right-click Tasks-status menu, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. Embedded state is persisted by canonical task link and its timer requests a screen wake lock. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, status discovery, result formatting, and completion, while retaining independent timer state.
+
+After every direct child of an unfinished task has a non-blank checkbox status
+(for example `[x]`, `[-]`, or `[/]`), both runners pause normal advancement and
+prompt for a status on that parent. Nested parents are offered bottom-up as each
+level becomes ready. Skipped or merely deselected children do not count as
+status-marked. A parent's recorded `🏁` is an inclusive roll-up of its children's
+task time, unassigned time accumulated while tasks in that subtree were paused,
+and time spent directly on the parent. Routine totals still count elapsed time
+only once rather than adding these roll-ups again.
+
 # Run tree and Undo
 
 Both runners show the run's task tree below the task card. Task labels come from
@@ -106,6 +116,7 @@ restores the task's previous running/paused state. Break state and timing are
 saved in the host's state file. Stop still returns to selection.
 
 The summary's total includes task and unassigned time, excludes breaks, and shows
-unassigned time separately. Task-level `🏁` results still contain only task time.
+unassigned time separately. Leaf-task `🏁` results contain only their direct task
+time; parent `🏁` results use the inclusive subtree roll-up described above.
 Schedule timers remain independent. Unassigned time before this feature was
 installed cannot be reconstructed.
