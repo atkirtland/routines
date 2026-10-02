@@ -8,9 +8,11 @@ This directory contains two deliberately separate runners:
 - `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`. Embedded task navigation/timers are stored separately in `schedule-runner-state.yaml`; they never share `routine-runner-state.yaml`, and Actual remains authoritative for schedule-block state.
 - Scheduled task blocks show the shared task-selection tree and `Start routine` control directly, without a separate task launcher step.
 
-Select the Daily Note date at the top of Schedule Runner. It initially defaults to today in UTC and is saved in `schedule-runner-state.yaml`, so reloads and UTC midnight keep the selected day. The selected date controls which note receives Actual entries; their timestamps still use the current UTC time. Daily Notes folder and filename settings are respected.
+Select the Daily Note date at the top of Schedule Runner. It initially defaults to today in local time and is saved in `schedule-runner-state.yaml`, so reloads preserve the selected day. The selected date controls which note receives Actual entries; Plan and Actual block clocks remain UTC. Daily Notes folder and filename settings are respected.
 
-All timestamps and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
+All Schedule Runner block clocks and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
+
+Tasks completed or cancelled through a runner receive a local lifecycle marker (`🕐 HH:mm:ss±HH:mm`, or `Z` at UTC) when the corresponding Tasks date (`✅` or `❌`) is present. This marker is kept in Markdown but hidden from runner labels and task identity.
 
 ## Timeline grammar
 

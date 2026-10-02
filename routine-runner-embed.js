@@ -127,7 +127,25 @@
     return rawLine.replace(core.TASK_LINE_RE, (m, p1, p2, p3, p4) => `${p1}${symbol}${p3}${p4}`);
   }
 
-  async function completeTaskTransaction(app, file, content, line, status = null, result = null) {
+  function localLifecycleParts(instant = new Date()) {
+    const pad = value => String(value).padStart(2, "0");
+    const offsetMinutes = -instant.getTimezoneOffset();
+    const offset = offsetMinutes === 0 ? "Z"
+      : `${offsetMinutes < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(offsetMinutes) / 60))}:${pad(Math.abs(offsetMinutes) % 60)}`;
+    return {
+      date: `${instant.getFullYear()}-${pad(instant.getMonth() + 1)}-${pad(instant.getDate())}`,
+      time: `${pad(instant.getHours())}:${pad(instant.getMinutes())}:${pad(instant.getSeconds())}${offset}`,
+    };
+  }
+
+  function stampLifecycleTime(line, type, time) {
+    const dateEmoji = type === "DONE" ? "✅" : type === "CANCELLED" ? "❌" : null;
+    const withoutStale = String(line).replace(/\s*🕐\uFE0F?\s*\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})/gu, "");
+    if (!dateEmoji || !new RegExp(`${dateEmoji}\\uFE0F?\\s*\\d{4}-\\d{2}-\\d{2}`, "u").test(withoutStale)) return withoutStale;
+    return requireCore().insertBeforeTasksMetadata(withoutStale, `🕐 ${time}`);
+  }
+
+  async function completeTaskTransaction(app, file, content, line, status = null, result = null, instant = new Date()) {
     const lines = content.split(/\r?\n/);
     const rawLine = lines[line];
     const api = app.plugins?.plugins?.["obsidian-tasks-plugin"]?.apiV1;
@@ -139,7 +157,7 @@
     if (status && terminal) {
       let settings = null;
       try { settings = await app.plugins?.plugins?.["obsidian-tasks-plugin"]?.loadData?.(); } catch (_) {}
-      const date = new Date().toISOString().slice(0, 10);
+      const { date } = localLifecycleParts(instant);
       replacement = replacement.split("\n").map(value => {
         const match = value.match(requireCore().TASK_LINE_RE);
         if (!match || match[2] === " ") return value;
@@ -150,6 +168,9 @@
         return changed;
       }).join("\n");
     }
+    const lifecycleType = status?.type || "DONE";
+    const { time } = localLifecycleParts(instant);
+    replacement = replacement.split("\n").map(value => stampLifecycleTime(value, lifecycleType, time)).join("\n");
     if (result) {
       const label = result.goalCount != null
         ? `🏁 ${requireCore().formatDuration(result.elapsedMs)} 🥅 ${result.count || 0}`
@@ -1204,7 +1225,7 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, replacementForTask, localLifecycleParts, stampLifecycleTime, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     crossedPlannedDuration, primeDurationSound, playDurationSound,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,

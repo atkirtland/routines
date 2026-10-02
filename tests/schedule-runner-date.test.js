@@ -17,12 +17,12 @@ const find = (node, predicate) => predicate(node) ? node : node.children.map(x =
 const source = fs.readFileSync(path.join(__dirname, "../schedule-runner-ui.js"), "utf8");
 const files = new Map();
 let today = "2026-09-27";
-const moment = { utc(value = today) {
+const moment = Object.assign(function (value = today) {
   return {
     isValid: () => /^\d{4}-\d{2}-\d{2}$/.test(value),
     format: format => format === "YYYY/MM/DD" ? value.replaceAll("-", "/") : value,
   };
-} };
+}, { utc() { throw new Error("Daily Note dates must use local moment time"); } });
 const app = {
   internalPlugins: { plugins: { "daily-notes": { instance: { options: { folder: "Daily", format: "YYYY/MM/DD" } } } } },
   vault: {
@@ -49,11 +49,11 @@ async function load() {
   const input = find(root, x => x.type === "date");
   input.value = "2026-09-26";
   await input.onchange();
-  assert(find(root, x => x.text === "UTC · Daily/2026/09/26.md"));
+  assert(find(root, x => x.text === "Local Daily Note · UTC block clocks · Daily/2026/09/26.md"));
   assert.equal(JSON.parse(files.get("Runner/schedule-runner-state.yaml")).selectedDate, "2026-09-26");
   today = "2026-09-28";
   root = await load();
   assert.equal(find(root, x => x.type === "date").value, "2026-09-26", "Reload after UTC midnight must preserve the selected date");
-  assert(find(root, x => x.text === "UTC · Daily/2026/09/26.md"));
+  assert(find(root, x => x.text === "Local Daily Note · UTC block clocks · Daily/2026/09/26.md"));
   console.log("schedule-runner date persistence: all tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

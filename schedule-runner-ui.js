@@ -22,8 +22,8 @@ try {
   const cfg = daily?.options || {};
   const format = cfg.format || "YYYY-MM-DD";
   const folder = (cfg.folder || "").replace(/\/$/, "");
-  let selectedDate = moment.utc().format("YYYY-MM-DD");
-  const pathForDate = date => `${folder ? folder + "/" : ""}${moment.utc(date, "YYYY-MM-DD", true).format(format)}.md`;
+  let selectedDate = moment().format("YYYY-MM-DD");
+  const pathForDate = date => `${folder ? folder + "/" : ""}${moment(date, "YYYY-MM-DD", true).format(format)}.md`;
   let dailyPath, file;
   const selectDailyNote = () => {
     dailyPath = pathForDate(selectedDate);
@@ -118,7 +118,7 @@ try {
   if (stateFile) {
     try {
       const saved = JSON.parse(await app.vault.read(stateFile));
-      if (typeof saved.selectedDate === "string" && moment.utc(saved.selectedDate, "YYYY-MM-DD", true).isValid()) selectedDate = saved.selectedDate;
+      if (typeof saved.selectedDate === "string" && moment(saved.selectedDate, "YYYY-MM-DD", true).isValid()) selectedDate = saved.selectedDate;
       if (saved["schedule-runner-state-version"] === 2 && saved.sessions && typeof saved.sessions === "object") {
         embeddedRuns.states = Object.fromEntries(Object.entries(saved.sessions).map(([key, value]) => [key, RRE.deserializeSession(value)]));
         embeddedRuns.legacy = saved.legacy || {};
@@ -271,7 +271,7 @@ try {
     dateInput.setAttribute("aria-label", "Daily note date");
     dateInput.onchange = async () => {
       const value = dateInput.value;
-      if (!moment.utc(value, "YYYY-MM-DD", true).isValid()) { dateInput.value = selectedDate; return; }
+      if (!moment(value, "YYYY-MM-DD", true).isValid()) { dateInput.value = selectedDate; return; }
       dateInput.disabled = true;
       clearTimeout(embeddedCoordinator.saveTimer);
       selectedDate = value;
@@ -279,7 +279,7 @@ try {
       await writeEmbeddedState(embeddedStateSnapshot());
       await enqueueEmbedded(async () => { selectDailyNote(); await render(); });
     };
-    title.createEl("strong", { text: `UTC · ${dailyPath}` });
+    title.createEl("strong", { text: `Local Daily Note · UTC block clocks · ${dailyPath}` });
     title.appendChild(button("Refresh", render));
     const undo = window[UNDO_KEY];
     title.appendChild(button("Undo", async () => {

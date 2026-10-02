@@ -32,7 +32,8 @@ async function setup(running = false, note = initial) {
   } };
   await vm.runInNewContext(fs.readFileSync(require.resolve('../schedule-runner-ui.js'), 'utf8'), {
     __scheduleRunnerEntry: { dv: { current: () => ({ file: { folder: 'Runner' } }), container: root, el: (_, text) => { throw new Error(text); } }, app,
-      moment: { utc: (value = '2026-09-29') => ({ format: () => value, isValid: () => true }) },
+      moment: Object.assign((value = '2026-09-29') => ({ format: () => value, isValid: () => true }),
+        { utc: (value = '2026-09-29') => ({ format: () => value, isValid: () => true }) }),
       Notice: class { constructor(message) { notices.push(message); } }, config: { registry: { version: 1, projects: {} } } },
     ScheduleRunner: S, RoutineRunnerEmbed: { model: E.model, createRunState: E.createRunState, renderPurgeCacheButton() {}, renderSession() { return { dispose() {} }; }, installStyles() {}, serializeSession: x => x, deserializeSession: x => x, runningSession: x => !!x?.running },
     document: { body, createElement: tag => new Element(tag) }, window: {}, setTimeout, clearTimeout,

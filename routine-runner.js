@@ -31,7 +31,7 @@
     const marker = description.indexOf(" -- ");
     const start = marker < 0 ? 0 : marker + 4;
     const tail = description.slice(start);
-    const metadata = tail.search(/\s+(?=#[\p{L}\p{N}_/\-]+|\^[\p{L}\p{N}_-]+\s*$|[🔺⏫🔼🔽⏬🔁➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅]|\[\p{Extended_Pictographic})/u);
+    const metadata = tail.search(/\s+(?=#[\p{L}\p{N}_/\-]+|\^[\p{L}\p{N}_-]+\s*$|[🔺⏫🔼🔽⏬🔁➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅🕐]|\[\p{Extended_Pictographic})/u);
     const boundary = metadata < 0 ? description.length : start + metadata;
     return { name: description.slice(0, marker < 0 ? boundary : marker).trimEnd(),
       comment: marker < 0 ? "" : description.slice(start, boundary).trim(), suffix: description.slice(boundary) };
@@ -42,11 +42,12 @@
   const METADATA_FIELD_RE = new RegExp([
     "[🔺⏫🔼🔽⏬]\\uFE0F?",
     "[➕🛫⏳📅✅❌]\\uFE0F?\\s*\\d{4}-\\d{2}-\\d{2}",
+    "🕐\\uFE0F?\\s*\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})",
     "[⏱🏁]\\uFE0F?\\s*-?\\d+:\\d{2}(?::\\d{2})?",
     "[🎯🥅]\\uFE0F?\\s*\\d+",
     "🆔\\uFE0F?\\s*[\\p{L}\\p{N}_-]+",
     "⛔\\uFE0F?\\s*[\\p{L}\\p{N}_-]+(?:\\s*,\\s*[\\p{L}\\p{N}_-]+)*",
-    "🔁\\uFE0F?[^🔺⏫🔼🔽⏬➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅#^\\[]*",
+    "🔁\\uFE0F?[^🔺⏫🔼🔽⏬➕🛫⏳📅✅❌🆔⛔⏱🎯🏁🥅🕐#^\\[]*",
   ].map(pattern => `\\s*(?:${pattern})`).join("|"), "gu");
   // Bracketed metadata groups such as `[🏁 5:00, 🥅 3]` (not markdown links).
   const METADATA_GROUP_RE = /\s*\[\s*\p{Extended_Pictographic}[^\]]*\](?!\()/gu;

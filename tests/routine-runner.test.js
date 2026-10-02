@@ -64,6 +64,8 @@ assert.equal(R.taskDisplay("- [ ] Stretch ⏱️ 10:05 🎯 20 -- felt stiff"), 
 assert.equal(R.taskDisplay("- [ ] Water 🔁 every day when done ⏫ 🆔 abc ⛔ x,y"), "Water");
 assert.equal(R.taskDisplay("- [ ] Read [🍎](https://example.com) now"), "Read [🍎](https://example.com) now");
 assert.equal(R.taskDisplay("- [ ] Eat fish ^961371"), "Eat fish");
+assert.equal(R.taskDisplay("- [x] Task 🕐 17:42:31-04:00 ➕ 2026-10-02 ✅ 2026-10-02"), "Task");
+assert.equal(R.normalizeTaskKey("Task 🕐 17:42:31-04:00 ✅ 2026-10-02"), "Task");
 assert.equal(R.taskDisplay("  - [x] 中文任务 #t/p ^任務-1"), "中文任务 #t/p");
 assert.equal(R.taskDisplay("- Plain list item"), "Plain list item");
 // Completing a task must not change its label, or run keys stop matching.
@@ -75,6 +77,19 @@ assert.equal(E.crossedPlannedDuration(9999, 10000, 10000), true);
 assert.equal(E.crossedPlannedDuration(10000, 11000, 10000), false);
 assert.equal(E.crossedPlannedDuration(9000, 9999, 10000), false);
 assert.equal(E.crossedPlannedDuration(-1, 0, 0), false);
+
+const fakeInstant = (offset, hour = 17, date = 2) => ({
+  getTimezoneOffset: () => offset, getFullYear: () => 2026, getMonth: () => 9,
+  getDate: () => date, getHours: () => hour, getMinutes: () => 42, getSeconds: () => 31,
+});
+assert.deepEqual(E.localLifecycleParts(fakeInstant(240)), { date: "2026-10-02", time: "17:42:31-04:00" });
+assert.equal(E.localLifecycleParts(fakeInstant(-330)).time, "17:42:31+05:30");
+assert.equal(E.localLifecycleParts(fakeInstant(0)).time, "17:42:31Z");
+assert.deepEqual(E.localLifecycleParts(fakeInstant(-60, 0, 3)), { date: "2026-10-03", time: "00:42:31+01:00" });
+assert.equal(E.stampLifecycleTime("- [x] Task ➕ 2026-10-02 ✅ 2026-10-02", "DONE", "17:42:31-04:00"), "- [x] Task 🕐 17:42:31-04:00 ➕ 2026-10-02 ✅ 2026-10-02");
+assert.equal(E.stampLifecycleTime("- [x] Task 🕐 01:02:03Z ✅ 2026-10-02", "DONE", "17:42:31-04:00"), "- [x] Task 🕐 17:42:31-04:00 ✅ 2026-10-02");
+assert.equal(E.stampLifecycleTime("- [x] Task", "DONE", "17:42:31-04:00"), "- [x] Task");
+assert.equal(E.stampLifecycleTime("- [x] Task 🕐 01:02:03Z", "DONE", "17:42:31-04:00"), "- [x] Task");
 
 assert.equal(
   R.insertBeforeTasksMetadata("- [ ] Run #fitness 📅 2026-09-28", "🏁 5:00"),
@@ -174,6 +189,29 @@ assert.equal(R.parseRoutineText(commented).tasks[0].display, R.parseRoutineText(
 assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a forest");
 
 (async () => {
+  {
+    let recurring = "- [ ] Repeat 🔁 every day";
+    const recurringApp = { plugins: { plugins: { "obsidian-tasks-plugin": {
+      apiV1: { executeToggleTaskDoneCommand: () => "- [x] Repeat 🔁 every day ✅ 2026-10-02\n- [ ] Repeat 🔁 every day 📅 2026-10-03" },
+    } } }, vault: { modify: async (_file, value) => { recurring = value; } } };
+    const transaction = await E.completeTaskTransaction(recurringApp, { path: "Tasks.md" }, recurring, 0, null, null, fakeInstant(240));
+    assert.equal(transaction.content, "- [x] Repeat 🕐 17:42:31-04:00 🔁 every day ✅ 2026-10-02\n- [ ] Repeat 🔁 every day 📅 2026-10-03");
+    assert.equal(transaction.undo.afterLines.length, 2, "recurrence undo includes both occurrences");
+  }
+  {
+    let content = "- [ ] Cancel";
+    const noCancelledDate = { plugins: { plugins: { "obsidian-tasks-plugin": { loadData: async () => ({ setCancelledDate: false }) } } }, vault: { modify: async (_file, value) => { content = value; } } };
+    await E.completeTaskTransaction(noCancelledDate, { path: "Tasks.md" }, content, 0,
+      { symbol: "-", type: "CANCELLED" }, null, fakeInstant(-330));
+    assert.equal(content, "- [-] Cancel", "cancel without its configured date has no lifecycle time");
+  }
+  {
+    let content = "- [ ] Cancel";
+    const cancelledDate = { plugins: { plugins: { "obsidian-tasks-plugin": { loadData: async () => ({ setCancelledDate: true }) } } }, vault: { modify: async (_file, value) => { content = value; } } };
+    await E.completeTaskTransaction(cancelledDate, { path: "Tasks.md" }, content, 0,
+      { symbol: "-", type: "CANCELLED" }, null, fakeInstant(-330));
+    assert.equal(content, "- [-] Cancel 🕐 17:42:31+05:30 ❌ 2026-10-02");
+  }
   let content = "Intro\n" + commentSource;
   let writes = 0;
   const app = { vault: { read: async () => content, modify: async (_file, value) => { content = value; writes++; } } };
