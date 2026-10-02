@@ -831,6 +831,25 @@ function renderSetup() {
     state,
     tasks: state.tasks,
     render,
+    onMove: (node, delta) => enqueueAction(() => RRE.moveTask(app, state.file, node, delta)),
+    onAdd: (node, description) => enqueueAction(async () => {
+      const result = await RRE.addTaskAfter(app, state.file, node, description, false);
+      const added = { ...result.task, id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, parentId: node.parentId, children: [], selected: true };
+      for (const existing of state.allTasks) if (existing.line >= added.line) existing.line++;
+      state.allTasks.push({ ...added });
+      return added;
+    }),
+    onEstimate: (node, value) => enqueueAction(async () => {
+      const updated = await RRE.updateTaskEstimate(app, state.file, node, value);
+      state.allTasks.filter(task => task.id === node.id).forEach(task => Object.assign(task, updated));
+      return updated;
+    }),
+    onDelete: node => enqueueAction(async () => {
+      const removed = await RRE.deleteTask(app, state.file, node);
+      state.allTasks = state.allTasks.filter(task => task.line < removed.start || task.line >= removed.start + removed.count);
+      state.allTasks.forEach(task => { if (task.line >= removed.start + removed.count) task.line -= removed.count; });
+    }),
+    onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
     onReset: recomputeTasksForSection,
   });
 }
@@ -913,6 +932,38 @@ function renderRun() {
       state.totalLeafCount = state.processedLeafCount + enabledLeaves(state.runTasks).filter(leaf => !state.retiredIds.includes(leaf.id)).length;
       scheduleCountSave();
     },
+    onMove: (node, delta) => enqueueAction(async () => {
+      await RRE.moveTask(app, state.file, node, delta);
+      await queueSave();
+    }),
+    onAdd: (node, description) => enqueueAction(async () => {
+      const result = await RRE.addTaskAfter(app, state.file, node, description, false);
+      const added = { ...result.task, id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, children: [], selected: true };
+      for (const existing of [...state.allTasks, ...flatten(state.runTasks)]) if (existing.line >= added.line) existing.line++;
+      state.allTasks.push({ ...added, parentId: node.parentId });
+      state.totalLeafCount++;
+      await queueSave();
+      return added;
+    }),
+    onEstimate: (node, value) => enqueueAction(async () => {
+      const updated = await RRE.updateTaskEstimate(app, state.file, node, value);
+      for (const copy of [...state.allTasks, ...flatten(state.tasks), ...flatten(state.runTasks)]) {
+        if (copy.id === node.id) Object.assign(copy, updated);
+      }
+      await queueSave();
+      return updated;
+    }),
+    onDelete: node => enqueueAction(async () => {
+      const removed = await RRE.deleteTask(app, state.file, node);
+      const deletedIds = new Set(flatten([node]).map(task => task.id));
+      state.allTasks = state.allTasks.filter(task => task.line < removed.start || task.line >= removed.start + removed.count);
+      for (const task of [...state.allTasks, ...flatten(state.tasks), ...flatten(state.runTasks)]) {
+        if (!deletedIds.has(task.id) && task.line >= removed.start + removed.count) task.line -= removed.count;
+      }
+      deletedIds.forEach(id => { delete state.sessions[id]; });
+      state.retiredIds = state.retiredIds.filter(id => !deletedIds.has(id));
+    }),
+    onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
     onReset: () => {
       const positions = new Map(state.initialTreeOrder.map((id, index) => [id, index]));
       const reset = nodes => { nodes.sort((a, b) => (positions.get(a.id) ?? 1e9) - (positions.get(b.id) ?? 1e9)); nodes.forEach(node => { if (!state.retiredIds.includes(node.id)) node.selected = true; reset(node.children); }); };

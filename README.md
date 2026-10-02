@@ -112,6 +112,19 @@ You are asked to confirm when more than one action would be undone. If a complet
 line was edited since, the rewind is refused and nothing changes. Tasks that were
 checked before the run started have no Undo; uncheck them in the note.
 
+While a task is running, the tree's ↑/↓ controls reorder sibling task blocks in
+the source note (a parent moves together with its full subtree). Click a row and
+use **Add after selected** to create a new unchecked task in both the live run
+and the original document. At the linked root of a scheduled routine, the new
+task is added as a child so it remains inside that routine. These edits do not
+pause or reset the active timer.
+
+These tree controls are available both before starting and during a run.
+Right-click a task label to edit its `⏱️` estimate with the native duration
+picker or delete it from the run and source note. Deleting a parent deletes its
+whole Markdown subtree after confirmation; the active task and its active
+ancestors are protected during a run.
+
 # Runner pauses
 
 Both runners share two pause controls. The task card's Pause stops only the task

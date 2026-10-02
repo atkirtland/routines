@@ -202,6 +202,18 @@ try {
       onComment: (task, comment) => enqueueEmbedded(async () => {
         Object.assign(task, await RRE.saveTaskComment(app, evidence.target, task, comment));
       }),
+      onMove: (task, delta) => enqueueEmbedded(() => RRE.moveTask(app, evidence.target, task, delta)),
+      onAdd: (task, description) => enqueueEmbedded(async () => {
+        const result = await RRE.addTaskAfter(app, evidence.target, task, description, task.parentId === null);
+        const added = { ...result.task, id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, children: [], selected: true };
+        const parentKey = task._runKey || runState.focusKey || "";
+        added._runKey = task.parentId === null ? `${parentKey}\u0000${added.display}` : `${parentKey.slice(0, parentKey.lastIndexOf("\u0000"))}${parentKey.includes("\u0000") ? "\u0000" : ""}${added.display}`;
+        saveEmbeddedState();
+        return added;
+      }),
+      onEstimate: (task, value) => enqueueEmbedded(() => RRE.updateTaskEstimate(app, evidence.target, task, value)),
+      onDelete: task => enqueueEmbedded(() => RRE.deleteTask(app, evidence.target, task)),
+      onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
       summaryActionLabel: "Back to task block",
       onSummaryAction: () => {

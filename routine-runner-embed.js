@@ -63,7 +63,7 @@
     .rr-tool-btn{padding:4px 8px;font-size:.82em;border-radius:5px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-tool-btn:hover{background:var(--interactive-hover)}.rr-reset-btn{margin-left:auto}
     .rr-summary{margin-left:auto;color:var(--text-muted);font-size:.85em;white-space:nowrap}
     .rr-review-list{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:stretch;column-gap:0;padding:0 10px;border:1px solid var(--background-modifier-border);border-radius:6px;margin-bottom:.75em}.rr-review-item{display:contents}.rr-review-item>*{padding:6px 0;border-bottom:1px solid var(--background-modifier-border);box-sizing:border-box}.rr-review-list>.rr-review-item:last-child>*{border-bottom:none}
-    .rr-review-item-disabled>*{opacity:.45}.rr-review-item-disabled .rr-review-text{text-decoration:line-through}.rr-review-item-context .rr-review-label{color:var(--text-muted);font-style:italic}.rr-review-item-active>*{background:var(--background-modifier-hover)}
+    .rr-review-item-disabled>*{opacity:.45}.rr-review-item-disabled .rr-review-text{text-decoration:line-through}.rr-review-item-context .rr-review-label{color:var(--text-muted);font-style:italic}.rr-review-item-active>*{box-shadow:inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active>*:first-child{box-shadow:inset 2px 0 0 var(--interactive-accent),inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active>*:last-child{box-shadow:inset -2px 0 0 var(--interactive-accent),inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active .rr-review-label{color:var(--interactive-accent)}
     .rr-review-text{display:flex;align-items:center;min-width:0}.rr-review-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.rr-disclosure{flex:none;width:1.4em;margin-left:.35em;padding:0;border:0;background:transparent;color:var(--text-muted);cursor:pointer}
     .rr-badge{color:var(--text-muted);font-size:.8em;background:var(--background-secondary);border-radius:4px;padding:1px 6px;white-space:nowrap}.rr-badge-group{display:flex;align-items:center;justify-content:flex-end;gap:.4em;padding-left:.6em}.rr-checkbox-cell{display:flex;align-items:center;justify-content:center;padding-left:.6em}.rr-reorder{display:flex;align-items:center;justify-content:center;gap:2px;padding-left:.6em}.rr-reorder-btn{line-height:1;font-size:.7em;padding:2px 6px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-reorder-btn:hover:not(:disabled){background:var(--interactive-hover)}.rr-reorder-btn:disabled{opacity:.3;cursor:default}
     .rr-empty{color:var(--text-muted);padding:8px 0}.rr-selection-header{display:flex;align-items:center;gap:.75em;margin-bottom:.6em}
@@ -73,6 +73,7 @@
     .rr-count-row{display:flex;align-items:center;justify-content:center;gap:.6em;margin:.75em 0 1em}.rr-count-btn{flex:none;width:2.4em;font-size:1.2em;padding:6px 0}.rr-count-value{font-size:1.8em;font-weight:700;min-width:1.4em;text-align:center;cursor:pointer;border-bottom:1px dashed var(--text-faint)}.rr-count-value:hover{color:var(--interactive-accent)}.rr-count-sep{color:var(--text-muted);font-size:1.4em}.rr-count-goal{color:var(--text-muted);font-size:1.4em;font-weight:600}.rr-count-input{font-size:1.8em;font-weight:700;width:3.2em;text-align:center;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal)}
     .rr-btn-row{display:flex;gap:.5em}.rr-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn:hover{background:var(--interactive-hover)}.rr-btn:disabled{opacity:.5;cursor:default}.rr-btn-primary{background:var(--interactive-accent);color:var(--text-on-accent);border-color:var(--interactive-accent)}.rr-btn-primary:hover{background:var(--interactive-accent-hover)}.rr-btn-stop{flex:none;padding:4px 14px;font-size:.85em;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-btn-stop:hover{background:var(--interactive-hover)}.rr-progress-label{font-weight:600}
     .rr-run-tree{margin-top:.75em}.rr-run-tree .rr-review-list{max-height:12em;overflow-y:auto;overscroll-behavior:contain;background:var(--background-primary)}.rr-review-item-current>*{background:var(--background-modifier-hover);font-weight:600}.rr-review-item-processed>*{opacity:.55}.rr-review-item-processed .rr-review-label{text-decoration:line-through}.rr-undo-btn{white-space:nowrap}.rr-review-item-processed>.rr-reorder{opacity:1}.rr-review-item-locked input{cursor:not-allowed}
+    .rr-add-task{display:flex;gap:.4em;margin:.45em 0 .75em}.rr-add-task .rr-input{margin:0;flex:1}.rr-add-task .rr-tool-btn{white-space:nowrap}
     .rr-status-menu{position:fixed;z-index:var(--layer-menu,1000);min-width:190px;max-height:60vh;overflow:auto;padding:4px;border:1px solid var(--background-modifier-border);border-radius:6px;background:var(--background-primary);box-shadow:var(--shadow-s)}.rr-status-option{display:flex;width:100%;gap:.6em;align-items:center;padding:6px 9px;border:0;border-radius:4px;background:transparent;color:var(--text-normal);text-align:left;cursor:pointer}.rr-status-option:hover,.rr-status-option:focus{background:var(--background-modifier-hover)}.rr-status-symbol{min-width:2.2em;font-family:var(--font-monospace)}.rr-status-type{margin-left:auto;color:var(--text-muted);font-size:.8em}
   `;
 
@@ -206,6 +207,133 @@
     lines[line] = replacement;
     await app.vault.modify(file, lines.join("\n"));
     return { line, sourceLine: replacement, comment: requireCore().taskCommentParts(replacement.match(requireCore().TASK_LINE_RE)[4]).comment };
+  }
+
+  function locateTask(content, task) {
+    const core = requireCore(), parsed = core.parseRoutineText(content);
+    let found = parsed.tasks.find(node => node.line === task.line && node.sourceLine === task.sourceLine);
+    if (found) return { parsed, task: found };
+    const matches = parsed.tasks.filter(node => node.sourceLine === task.sourceLine);
+    if (matches.length !== 1) throw new Error(matches.length ? "Task is ambiguous; reload before editing the tree." : "Task changed; reload before editing the tree.");
+    return { parsed, task: matches[0] };
+  }
+
+  function subtreeEnd(tasks, task, lines) {
+    const next = tasks.find(node => node.line > task.line && node.indent <= task.indent);
+    let end = next ? next.line : lines.length;
+    for (let index = task.line + 1; index < end; index++) {
+      if (/^#{1,6}\s/.test(lines[index])) { end = index; break; }
+      if (lines[index].trim() && !lines[index].match(requireCore().TASK_LINE_RE)) {
+        const indent = (lines[index].match(/^[ \t]*/) || [""])[0].replace(/\t/g, "    ").length;
+        if (indent <= task.indent) { end = index > task.line + 1 && !lines[index - 1].trim() ? index - 1 : index; break; }
+      }
+    }
+    return end;
+  }
+
+  async function moveTask(app, file, task, delta) {
+    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
+    const { parsed, task: source } = locateTask(content, task);
+    const siblings = parsed.tasks.filter(node => node.parentId === source.parentId);
+    const index = siblings.findIndex(node => node.id === source.id), targetIndex = index + delta;
+    if (index < 0 || targetIndex < 0 || targetIndex >= siblings.length) throw new Error("Task cannot move in that direction.");
+    const first = delta < 0 ? siblings[targetIndex] : source;
+    const second = delta < 0 ? source : siblings[targetIndex];
+    const firstEnd = subtreeEnd(parsed.tasks, first, lines);
+    const secondEnd = subtreeEnd(parsed.tasks, second, lines);
+    if (firstEnd !== second.line) throw new Error("Only adjacent sibling task blocks can be moved safely.");
+    lines.splice(first.line, secondEnd - first.line,
+      ...lines.slice(second.line, secondEnd), ...lines.slice(first.line, firstEnd));
+    const next = lines.join("\n");
+    await app.vault.modify(file, next);
+    const offset = delta < 0 ? first.line - source.line : secondEnd - second.line;
+    requireCore().flatten([task]).forEach(node => { node.line += offset; });
+    return next;
+  }
+
+  async function addTaskAfter(app, file, task, description, forceChild = false) {
+    const name = String(description).replace(/[\r\n]+/g, " ").trim();
+    if (!name) throw new Error("Enter a task description.");
+    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
+    const { parsed, task: source } = locateTask(content, task);
+    const asChild = forceChild;
+    const indent = asChild ? source.indent + 2 : source.indent;
+    const insertion = subtreeEnd(parsed.tasks, source, lines);
+    const raw = `${" ".repeat(indent)}- [ ] ${name}`;
+    lines.splice(insertion, 0, raw);
+    const next = lines.join("\n");
+    await app.vault.modify(file, next);
+    const added = requireCore().parseRoutineText(next).tasks.find(node => node.line === insertion);
+    return { content: next, task: added };
+  }
+
+  async function updateTaskEstimate(app, file, task, estimateMs) {
+    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
+    const { task: source } = locateTask(content, task), core = requireCore();
+    const match = lines[source.line].match(core.TASK_LINE_RE);
+    if (!match) throw new Error("Referenced line is no longer a task.");
+    const duration = core.formatDuration(Math.max(0, estimateMs));
+    const description = core.TIME_GOAL_RE.test(match[4])
+      ? match[4].replace(core.TIME_GOAL_RE, `⏱️ ${duration}`)
+      : core.insertBeforeTasksMetadata(match[4], `⏱️ ${duration}`);
+    lines[source.line] = `${match[1]}${match[2]}${match[3]}${description}`;
+    const next = lines.join("\n");
+    await app.vault.modify(file, next);
+    return { content: next, line: source.line, sourceLine: lines[source.line], estimateMs: Math.max(0, estimateMs) };
+  }
+
+  async function deleteTask(app, file, task) {
+    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
+    const { parsed, task: source } = locateTask(content, task);
+    const end = subtreeEnd(parsed.tasks, source, lines);
+    lines.splice(source.line, end - source.line);
+    const next = lines.join("\n");
+    await app.vault.modify(file, next);
+    return { content: next, start: source.line, count: end - source.line };
+  }
+
+  function durationPicker(initialMs) {
+    return new Promise(resolve => {
+      let settled = false;
+      const modal = document.createElement("dialog");
+      modal.createEl("h3", { text: "Estimated duration" });
+      const input = modal.createEl("input", { attr: { type: "time", step: "1", "aria-label": "Estimated duration" } });
+      const seconds = Math.max(0, Math.round(Number(initialMs) / 1000));
+      input.value = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+      input.style.width = "100%";
+      const row = modal.createDiv({ cls: "rr-tools-row" });
+      const finish = value => { if (settled) return; settled = true; resolve(value); modal.close(); modal.remove(); };
+      const cancel = row.createEl("button", { cls: "rr-tool-btn", text: "Cancel" });
+      const save = row.createEl("button", { cls: "rr-tool-btn", text: "Save" });
+      cancel.addEventListener("click", () => finish(null));
+      save.addEventListener("click", () => {
+        const parts = input.value.split(":").map(Number);
+        finish(parts.length >= 2 && parts.every(Number.isFinite) ? ((parts[0] * 60 + parts[1]) * 60 + (parts[2] || 0)) * 1000 : null);
+      });
+      input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); save.click(); } });
+      modal.addEventListener("cancel", event => { event.preventDefault(); finish(null); });
+      document.body.appendChild(modal); modal.showModal(); input.focus();
+    });
+  }
+
+  function showTaskEditMenu(anchor, node, options) {
+    const menu = document.body.createDiv({ cls: "rr-status-menu" });
+    const item = (label, action, disabled = false) => {
+      const button = menu.createEl("button", { cls: "rr-status-option", text: label });
+      button.disabled = disabled;
+      button.addEventListener("click", () => { menu.remove(); action(); });
+    };
+    item("Edit estimated time…", async () => {
+      const value = await durationPicker(node.estimateMs);
+      if (value != null) options.onEstimate?.(value);
+    });
+    item(node.children.length ? "Delete task and children…" : "Delete task…", options.onDelete, options.deleteDisabled);
+    const rect = anchor.getBoundingClientRect(), box = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(4, Math.min(rect.left, innerWidth - box.width - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(rect.bottom + 4, innerHeight - box.height - 4))}px`;
+    menu.tabIndex = -1; menu.focus();
+    menu.addEventListener("keydown", event => { if (event.key === "Escape") menu.remove(); });
+    menu.addEventListener("focusout", () => setTimeout(() => { if (!menu.contains(document.activeElement)) menu.remove(); }, 0));
   }
 
   function renderBreadcrumbs(container, path, currentLine, onFocus, buttonMode = true, onContext = null) {
@@ -453,6 +581,29 @@
       text.addEventListener("click", () => {
         state.setupCursorId = node.id; redraw(); if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
       });
+      if (options.onEstimate || options.onDelete) text.addEventListener("contextmenu", event => {
+        event.preventDefault(); event.stopPropagation();
+        showTaskEditMenu(text, node, {
+          deleteDisabled: locked(node) || !options.onDelete,
+          onEstimate: async value => {
+            try {
+              const updated = await options.onEstimate?.(node, value);
+              if (updated) Object.assign(node, updated);
+              redraw();
+            } catch (error) { options.onEditError?.(error); }
+          },
+          onDelete: async () => {
+            const label = node.children.length ? `Delete “${node.display}” and all of its child tasks?` : `Delete “${node.display}”?`;
+            if (typeof confirm === "function" && !confirm(label)) return;
+            try {
+              await options.onDelete?.(node);
+              siblings.splice(idx, 1);
+              if (state.setupCursorId === node.id) state.setupCursorId = siblings[Math.min(idx, siblings.length - 1)]?.id || null;
+              redraw();
+            } catch (error) { options.onEditError?.(error); }
+          },
+        });
+      });
       const badges = row.createDiv({ cls: "rr-badge-group" });
       if (node.goalCount != null) badges.createSpan({ cls: "rr-badge", text: `🎯 ${node.goalCount}` });
       badges.createSpan({ cls: "rr-badge", text: core.formatDuration(node.estimateMs) });
@@ -467,11 +618,43 @@
         undo.addEventListener("click", event => { event.stopPropagation(); options.onRewind(node, nodeKey); });
         return;
       }
-      const move = delta => { const target = idx + delta; if (target < 0 || target >= siblings.length) return; [siblings[idx], siblings[target]] = [siblings[target], siblings[idx]]; redraw(); };
+      const move = async delta => {
+        const target = idx + delta; if (target < 0 || target >= siblings.length) return;
+        try {
+          if (options.onMove) await options.onMove(node, delta);
+          [siblings[idx], siblings[target]] = [siblings[target], siblings[idx]]; redraw();
+        } catch (error) { options.onEditError?.(error); }
+      };
       const up = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↑" }); up.disabled = !ancestorsEnabled || locked(node) || idx === 0; up.addEventListener("click", () => move(-1));
       const down = reorder.createEl("button", { cls: "rr-reorder-btn", text: "↓" }); down.disabled = !ancestorsEnabled || locked(node) || idx === siblings.length - 1; down.addEventListener("click", () => move(1));
       if (isCurrent && typeof row.scrollIntoView === "function") setTimeout(() => row.scrollIntoView({ block: "center", inline: "nearest" }), 0);
     });
+    if (options.onAdd) {
+      const add = container.createDiv({ cls: "rr-add-task" });
+      const input = add.createEl("input", { cls: "rr-input", attr: { type: "text", placeholder: "New task…", "aria-label": "New task description" } });
+      const button = add.createEl("button", { cls: "rr-tool-btn", text: "Add after selected" });
+      const submit = async () => {
+        const selected = core.flatten(tasks).find(node => node.id === state.setupCursorId);
+        if (!selected || !input.value.trim()) return;
+        button.disabled = true;
+        try {
+          const added = await options.onAdd(selected, input.value.trim());
+          if (added) {
+            const parent = selected.parentId ? core.flatten(tasks).find(node => node.id === selected.parentId) : null;
+            const siblings = parent ? parent.children : tasks;
+            const at = siblings.indexOf(selected);
+            added.parentId = parent?.id ?? (selected.parentId === null && options.addRootAsChild ? selected.id : selected.parentId);
+            added.children = added.children || []; added.selected = true;
+            if (selected.parentId === null && options.addRootAsChild) selected.children.push(added);
+            else siblings.splice(at + 1, 0, added);
+            state.setupCursorId = added.id; input.value = ""; redraw();
+          }
+        } catch (error) { options.onEditError?.(error); }
+        finally { button.disabled = false; }
+      };
+      button.addEventListener("click", submit);
+      input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); submit(); } });
+    }
     let pendingG = false;
     list.addEventListener("keydown", event => {
       if (["INPUT", "BUTTON"].includes(event.target.tagName)) return;
@@ -791,6 +974,12 @@
       state, tasks: runRoots, keyOf, currentKey: state.activeLeafKey, processed: all.filter(isDone).map(keyOf),
       locked: node => activeKeys.has(keyOf(node)), render: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
       onChange: syncTree,
+      onMove: options.onMove,
+      onAdd: options.onAdd,
+      onEstimate: options.onEstimate,
+      onDelete: options.onDelete,
+      addRootAsChild: true,
+      onEditError: error => options.onEditError?.(error),
       onReset: () => {
         const initial = JSON.parse(JSON.stringify(state.initialRunTree || []));
         const initialMap = new Map(core.flatten(initial).map(node => [keyOf(node), node]));
@@ -906,6 +1095,12 @@
         tasks: selectionTasks,
         render: () => renderSession(container, options),
         onChange: syncSelection,
+        onMove: options.onMove,
+        onAdd: options.onAdd,
+        onEstimate: options.onEstimate,
+        onDelete: options.onDelete,
+        addRootAsChild: true,
+        onEditError: error => options.onEditError?.(error),
         onReset: () => {
           core.flatten(selectionTasks).forEach(node => { node.selected = true; });
           state.enabled = {};
@@ -936,7 +1131,7 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     crossedPlannedDuration, primeDurationSound, playDurationSound,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,

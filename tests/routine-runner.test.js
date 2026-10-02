@@ -177,6 +177,27 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   const previousWrites = writes;
   await assert.rejects(E.saveTaskComment(app, { path: "Tasks.md" }, stale, "Unsafe"), /ambiguous/);
   assert.equal(writes, previousWrites);
+
+  content = "# Routine\n- [ ] Parent\n  - [ ] A\n    - [ ] A child\n  - [ ] B\n\nNotes";
+  let parsed = R.parseRoutineText(content);
+  await E.moveTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "B"), -1);
+  assert.equal(content, "# Routine\n- [ ] Parent\n  - [ ] B\n  - [ ] A\n    - [ ] A child\n\nNotes", "moving a task moves its subtree and persists sibling order");
+  parsed = R.parseRoutineText(content);
+  const addedSibling = await E.addTaskAfter(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "B"), "New sibling ⏱️ 0:05");
+  assert.equal(addedSibling.task.sourceLine, "  - [ ] New sibling ⏱️ 0:05");
+  assert.match(content, /  - \[ \] B\n  - \[ \] New sibling ⏱️ 0:05\n  - \[ \] A/);
+  parsed = R.parseRoutineText(content);
+  await E.addTaskAfter(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "Parent"), "New child", true);
+  assert.match(content, /    - \[ \] A child\n  - \[ \] New child\n\nNotes$/, "embedded-root additions stay inside the linked subtree");
+  parsed = R.parseRoutineText(content);
+  const estimateUpdate = await E.updateTaskEstimate(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "New sibling"), 90000);
+  assert.match(estimateUpdate.sourceLine, /⏱️ 1:30/);
+  assert.equal(R.parseRoutineText(content).tasks.find(node => node.display === "New sibling").estimateMs, 90000);
+  parsed = R.parseRoutineText(content);
+  await E.deleteTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "A"));
+  assert.doesNotMatch(content, /A child/, "deleting a parent removes its complete subtree");
+  assert.match(content, /New sibling/);
+
   class Element {
     constructor(options = {}) { Object.assign(this, options); this.children = []; this.events = {}; this.style = {}; this.classList = { toggle() {} }; }
     createDiv(options) { return this.createEl("div", options); }
