@@ -62,10 +62,10 @@
     .rr-input{width:100%;box-sizing:border-box;padding:6px 10px;border-radius:6px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);margin-bottom:.5em}
     .rr-tool-btn{padding:4px 8px;font-size:.82em;border-radius:5px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-tool-btn:hover{background:var(--interactive-hover)}.rr-reset-btn{margin-left:auto}
     .rr-summary{margin-left:auto;color:var(--text-muted);font-size:.85em;white-space:nowrap}
-    .rr-review-list{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:stretch;column-gap:0;padding:0 10px;border:1px solid var(--background-modifier-border);border-radius:6px;margin-bottom:.75em}.rr-review-item{display:contents}.rr-review-item>*{padding:6px 0;border-bottom:1px solid var(--background-modifier-border);box-sizing:border-box}.rr-review-list>.rr-review-item:last-child>*{border-bottom:none}
+    .rr-review-list{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:stretch;column-gap:0;padding:0 10px;border:1px solid var(--background-modifier-border);border-radius:6px;margin-bottom:.75em}.rr-review-item{display:contents}.rr-review-item>*{padding:6px 0;border-bottom:1px solid var(--background-modifier-border);box-sizing:border-box}.rr-review-list>.rr-review-item:last-child>*{border-bottom:none}
     .rr-review-item-disabled>*{opacity:.45}.rr-review-item-disabled .rr-review-text{text-decoration:line-through}.rr-review-item-context .rr-review-label{color:var(--text-muted);font-style:italic}.rr-review-item-active>*{box-shadow:inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active>*:first-child{box-shadow:inset 2px 0 0 var(--interactive-accent),inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active>*:last-child{box-shadow:inset -2px 0 0 var(--interactive-accent),inset 0 2px 0 var(--interactive-accent),inset 0 -2px 0 var(--interactive-accent)}.rr-review-item-active .rr-review-label{color:var(--interactive-accent)}
     .rr-review-text{display:flex;align-items:center;min-width:0}.rr-review-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.rr-disclosure{flex:none;width:1.4em;margin-left:.35em;padding:0;border:0;background:transparent;color:var(--text-muted);cursor:pointer}
-    .rr-badge{color:var(--text-muted);font-size:.8em;background:var(--background-secondary);border-radius:4px;padding:1px 6px;white-space:nowrap}.rr-badge-group{display:flex;align-items:center;justify-content:flex-end;gap:.4em;padding-left:.6em}.rr-checkbox-cell{display:flex;align-items:center;justify-content:center;padding-left:.6em}.rr-reorder{display:flex;align-items:center;justify-content:center;gap:2px;padding-left:.6em}.rr-reorder-btn{line-height:1;font-size:.7em;padding:2px 6px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-reorder-btn:hover:not(:disabled){background:var(--interactive-hover)}.rr-reorder-btn:disabled{opacity:.3;cursor:default}
+    .rr-badge{color:var(--text-muted);font-size:.8em;background:var(--background-secondary);border-radius:4px;padding:1px 6px;white-space:nowrap}.rr-badge-button{border:1px solid transparent;font-family:inherit;line-height:inherit;cursor:pointer}.rr-badge-button:hover,.rr-badge-button:focus{color:var(--interactive-accent);border-color:var(--interactive-accent)}.rr-badge-group{display:flex;align-items:center;justify-content:flex-end;gap:.4em;padding-left:.6em}.rr-checkbox-cell,.rr-status-checkbox-cell{display:flex;align-items:center;justify-content:center;padding-left:.6em}.rr-status-checkbox-cell{padding-left:0;padding-right:.55em}.rr-reorder{display:flex;align-items:center;justify-content:center;gap:2px;padding-left:.6em}.rr-reorder-btn{line-height:1;font-size:.7em;padding:2px 6px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--interactive-normal);color:var(--text-normal);cursor:pointer}.rr-reorder-btn:hover:not(:disabled){background:var(--interactive-hover)}.rr-reorder-btn:disabled{opacity:.3;cursor:default}
     .rr-empty{color:var(--text-muted);padding:8px 0}.rr-selection-header{display:flex;align-items:center;gap:.75em;margin-bottom:.6em}
     .rr-header{display:flex;align-items:center;justify-content:space-between;gap:.75em;margin-bottom:.5em}.rr-card{border:1px solid var(--background-modifier-border);border-radius:8px;padding:1em;background:var(--background-secondary)}
     .rr-task-text{font-size:1.15em;font-weight:600;margin-bottom:.25em}.rr-embedded-crumbs{display:flex;align-items:center;gap:.15em;flex-wrap:wrap}.rr-crumb{cursor:pointer;color:var(--interactive-accent)}.rr-crumb-current{cursor:default;color:var(--text-normal)}.rr-crumb-sep{color:var(--text-faint);padding:0 .35em}.rr-est{color:var(--text-muted);font-size:.85em;margin-bottom:.75em}
@@ -280,6 +280,21 @@
     const next = lines.join("\n");
     await app.vault.modify(file, next);
     return { content: next, line: source.line, sourceLine: lines[source.line], estimateMs: Math.max(0, estimateMs) };
+  }
+
+  async function checkTask(app, file, task, status = null) {
+    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
+    const { task: source } = locateTask(content, task), core = requireCore();
+    const match = lines[source.line].match(core.TASK_LINE_RE);
+    if (!match) throw new Error("Referenced line is no longer a task.");
+    const before = lines[source.line];
+    const symbol = status?.symbol ?? "x";
+    lines[source.line] = `${match[1]}${symbol}${match[3]}${match[4]}`;
+    if (lines[source.line] === before) return { content, line: source.line, sourceLine: before, checked: symbol !== " ", undo: null };
+    const next = lines.join("\n");
+    await app.vault.modify(file, next);
+    return { content: next, line: source.line, sourceLine: lines[source.line], checked: symbol !== " ",
+      undo: { start: source.line, beforeLines: [before], afterLines: [lines[source.line]] } };
   }
 
   async function deleteTask(app, file, task) {
@@ -571,6 +586,25 @@
       if (locked(node)) row.addClass("rr-review-item-locked");
       if (state.taskQuery.trim() && !selfMatches) row.addClass("rr-review-item-context");
       if (node.id === state.setupCursorId) row.addClass("rr-review-item-active");
+      const statusCell = row.createDiv({ cls: "rr-status-checkbox-cell" });
+      const statusCheckbox = statusCell.createEl("input", { attr: { type: "checkbox", title: node.checked ? "Task already has a status" : "Mark task done", "aria-label": `${node.checked ? "Completed" : "Mark done"}: ${node.display}` } });
+      statusCheckbox.style.transform = `translateX(${depth * 1.25}em)`;
+      statusCheckbox.checked = Boolean(node.checked);
+      statusCheckbox.disabled = Boolean(node.checked) || locked(node) || !options.onCheck;
+      const markStatus = async status => {
+        statusCheckbox.disabled = true;
+        try {
+          const updated = await options.onCheck(node, status);
+          Object.assign(node, updated || { checked: true });
+          redraw();
+        } catch (error) { statusCheckbox.checked = false; statusCheckbox.disabled = false; options.onEditError?.(error); }
+      };
+      statusCheckbox.addEventListener("change", () => { if (statusCheckbox.checked) markStatus(null); });
+      statusCheckbox.addEventListener("contextmenu", event => {
+        if (locked(node) || !options.onCheck) return;
+        event.preventDefault(); event.stopPropagation();
+        showStatusMenu(options.app, statusCheckbox, markStatus).catch(error => options.onEditError?.(error));
+      });
       const text = row.createSpan({ cls: "rr-review-text" });
       text.style.paddingLeft = `${depth * 1.25}em`;
       text.createSpan({ cls: "rr-review-label", text: node.display });
@@ -581,16 +615,22 @@
       text.addEventListener("click", () => {
         state.setupCursorId = node.id; redraw(); if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => container.querySelector(".rr-review-list")?.focus());
       });
+      const editEstimate = async () => {
+        const value = await durationPicker(node.estimateMs);
+        if (value == null) return;
+        try {
+          const updated = await options.onEstimate?.(node, value);
+          if (updated) Object.assign(node, updated);
+          redraw();
+        } catch (error) { options.onEditError?.(error); }
+      };
       if (options.onEstimate || options.onDelete) text.addEventListener("contextmenu", event => {
         event.preventDefault(); event.stopPropagation();
         showTaskEditMenu(text, node, {
           deleteDisabled: locked(node) || !options.onDelete,
           onEstimate: async value => {
-            try {
-              const updated = await options.onEstimate?.(node, value);
-              if (updated) Object.assign(node, updated);
-              redraw();
-            } catch (error) { options.onEditError?.(error); }
+            try { const updated = await options.onEstimate?.(node, value); if (updated) Object.assign(node, updated); redraw(); }
+            catch (error) { options.onEditError?.(error); }
           },
           onDelete: async () => {
             const label = node.children.length ? `Delete “${node.display}” and all of its child tasks?` : `Delete “${node.display}”?`;
@@ -606,7 +646,10 @@
       });
       const badges = row.createDiv({ cls: "rr-badge-group" });
       if (node.goalCount != null) badges.createSpan({ cls: "rr-badge", text: `🎯 ${node.goalCount}` });
-      badges.createSpan({ cls: "rr-badge", text: core.formatDuration(node.estimateMs) });
+      const estimate = options.onEstimate
+        ? badges.createEl("button", { cls: "rr-badge rr-badge-button", text: core.formatDuration(node.estimateMs), attr: { title: "Edit estimated time", "aria-label": `Edit estimated time for ${node.display}` } })
+        : badges.createSpan({ cls: "rr-badge", text: core.formatDuration(node.estimateMs) });
+      if (options.onEstimate) estimate.addEventListener("click", event => { event.stopPropagation(); editEstimate(); });
       const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
       const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
       checkbox.checked = node.selected !== false; checkbox.disabled = !ancestorsEnabled || locked(node);
@@ -971,12 +1014,24 @@
       options.onStateChange?.(state);
     };
     renderSelection(treeHost, {
-      state, tasks: runRoots, keyOf, currentKey: state.activeLeafKey, processed: all.filter(isDone).map(keyOf),
+      app: options.app, state, tasks: runRoots, keyOf, currentKey: state.activeLeafKey, processed: all.filter(isDone).map(keyOf),
       locked: node => activeKeys.has(keyOf(node)), render: () => options.onRefresh ? options.onRefresh() : renderRunner(container, options),
       onChange: syncTree,
       onMove: options.onMove,
       onAdd: options.onAdd,
       onEstimate: options.onEstimate,
+      onCheck: async (node, status) => {
+        const affected = core.flatten([node]).filter(part => !part.children.length && !retired.has(keyOf(part))).length;
+        const retiredKeys = core.flatten([node]).map(keyOf);
+        const updated = await options.onCheck?.(node, status);
+        retiredKeys.forEach(value => retired.add(value));
+        state.retired = [...retired];
+        state.processedCount = (state.processedCount || 0) + affected;
+        state.completedCount = (state.completedCount || 0) + 1;
+        state.actionHistory = [...(state.actionHistory || []), { key: keyOf(node), kind: "done", retiredKeys, affected, undo: updated?.undo || null }];
+        options.onStateChange?.(state);
+        return updated;
+      },
       onDelete: options.onDelete,
       addRootAsChild: true,
       onEditError: error => options.onEditError?.(error),
@@ -1091,6 +1146,7 @@
         if (options.onRefresh) options.onRefresh(); else renderSession(container, options);
       });
       renderSelection(container, {
+        app: options.app,
         state,
         tasks: selectionTasks,
         render: () => renderSession(container, options),
@@ -1098,6 +1154,7 @@
         onMove: options.onMove,
         onAdd: options.onAdd,
         onEstimate: options.onEstimate,
+        onCheck: options.onCheck,
         onDelete: options.onDelete,
         addRootAsChild: true,
         onEditError: error => options.onEditError?.(error),
@@ -1131,7 +1188,7 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     crossedPlannedDuration, primeDurationSound, playDurationSound,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,

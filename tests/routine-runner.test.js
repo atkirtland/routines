@@ -194,6 +194,14 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   assert.match(estimateUpdate.sourceLine, /⏱️ 1:30/);
   assert.equal(R.parseRoutineText(content).tasks.find(node => node.display === "New sibling").estimateMs, 90000);
   parsed = R.parseRoutineText(content);
+  const checked = await E.checkTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "New sibling"));
+  assert.equal(checked.checked, true);
+  assert.match(checked.sourceLine, /^  - \[x\] New sibling/);
+  assert.match(checked.undo.beforeLines[0], /^  - \[ \] New sibling/);
+  parsed = R.parseRoutineText(content);
+  const cancelled = await E.checkTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "New child"), { symbol: "-", name: "Cancelled", type: "CANCELLED" });
+  assert.match(cancelled.sourceLine, /^  - \[-\] New child/);
+  parsed = R.parseRoutineText(content);
   await E.deleteTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "A"));
   assert.doesNotMatch(content, /A child/, "deleting a parent removes its complete subtree");
   assert.match(content, /New sibling/);

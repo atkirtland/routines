@@ -828,6 +828,7 @@ function renderSetup() {
   });
 
   RRE.renderSelection(container, {
+    app,
     state,
     tasks: state.tasks,
     render,
@@ -841,6 +842,11 @@ function renderSetup() {
     }),
     onEstimate: (node, value) => enqueueAction(async () => {
       const updated = await RRE.updateTaskEstimate(app, state.file, node, value);
+      state.allTasks.filter(task => task.id === node.id).forEach(task => Object.assign(task, updated));
+      return updated;
+    }),
+    onCheck: (node, status) => enqueueAction(async () => {
+      const updated = await RRE.checkTask(app, state.file, node, status);
       state.allTasks.filter(task => task.id === node.id).forEach(task => Object.assign(task, updated));
       return updated;
     }),
@@ -925,7 +931,7 @@ function renderRun() {
   const treeHost = container.createDiv({ cls: "rr-run-tree" });
   const activePathIds = new Set(path.map(node => node.id));
   RRE.renderSelection(treeHost, {
-    state, tasks: state.runTasks, currentKey: state.activeLeafId,
+    app, state, tasks: state.runTasks, currentKey: state.activeLeafId,
     processed: [...state.retiredIds, ...flatten(state.runTasks).filter(node => node.checked).map(node => node.id)],
     locked: node => activePathIds.has(node.id), render,
     onChange: () => {
@@ -950,6 +956,22 @@ function renderRun() {
       for (const copy of [...state.allTasks, ...flatten(state.tasks), ...flatten(state.runTasks)]) {
         if (copy.id === node.id) Object.assign(copy, updated);
       }
+      await queueSave();
+      return updated;
+    }),
+    onCheck: (node, status) => enqueueAction(async () => {
+      const updated = await RRE.checkTask(app, state.file, node, status);
+      for (const copy of [...state.allTasks, ...flatten(state.tasks), ...flatten(state.runTasks)]) {
+        if (copy.id === node.id) Object.assign(copy, updated);
+      }
+      const branch = flatten([node]);
+      const retired = new Set(state.retiredIds);
+      const affected = branch.filter(task => !task.children.length && !retired.has(task.id)).length;
+      branch.forEach(task => retired.add(task.id));
+      state.retiredIds = [...retired];
+      state.processedLeafCount += affected;
+      state.completedCount++;
+      state.actionHistory.push({ key: node.id, kind: "done", retiredKeys: branch.map(task => task.id), affected, undo: updated.undo });
       await queueSave();
       return updated;
     }),

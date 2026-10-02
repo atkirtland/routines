@@ -120,8 +120,12 @@ task is added as a child so it remains inside that routine. These edits do not
 pause or reset the active timer.
 
 These tree controls are available both before starting and during a run.
-Right-click a task label to edit its `⏱️` estimate with the native duration
-picker or delete it from the run and source note. Deleting a parent deletes its
+Use the checkbox to the left of a task name to mark it `[x]` in the source note;
+right-click it to choose another configured Tasks status. The active task and
+its active ancestors remain protected. Click the displayed
+estimated time to edit its `⏱️` value with a native time input used as a duration
+control. Right-click a task label for the task menu, including deletion
+from the run and source note. Deleting a parent deletes its
 whole Markdown subtree after confirmation; the active task and its active
 ancestors are protected during a run.
 

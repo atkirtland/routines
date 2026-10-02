@@ -212,6 +212,7 @@ try {
         return added;
       }),
       onEstimate: (task, value) => enqueueEmbedded(() => RRE.updateTaskEstimate(app, evidence.target, task, value)),
+      onCheck: (task, status) => enqueueEmbedded(() => RRE.checkTask(app, evidence.target, task, status)),
       onDelete: task => enqueueEmbedded(() => RRE.deleteTask(app, evidence.target, task)),
       onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
