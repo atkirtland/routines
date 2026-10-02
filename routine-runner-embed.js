@@ -526,6 +526,7 @@
   function openSelectionTree(node) {
     if (!node || (node.checkable !== false && node.checked)) return null;
     const children = node.children.map(openSelectionTree).filter(Boolean);
+    if (node.checkable === false && !children.length) return null;
     if (node.children.length && !children.length) return null;
     return { ...node, children };
   }

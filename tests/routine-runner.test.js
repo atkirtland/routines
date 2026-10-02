@@ -135,6 +135,17 @@ assert.equal(structuralTree.tasks.length, 6);
 assert.equal(structuralTree.tasks[1].checkable, false);
 assert.equal(structuralTree.tasks[2].parentId, structuralTree.tasks[1].id);
 assert.deepEqual(R.enabledLeaves(structuralTree.tasks.filter(node => !node.parentId)).map(node => node.display), ["Coffee", "Journal", "Outside"]);
+assert.deepEqual(
+  R.taskBearingTree(R.parseRoutineText(`- Unrelated root list
+- Group with tasks
+  - Plain note
+  - Nested group
+    - [ ] Kept task
+- [ ] Root task
+`).tasks.filter(node => !node.parentId)).map(node => [node.display, node.children.map(child => child.display)]),
+  [["Group with tasks", ["Nested group"]], ["Root task", []]],
+  "plain list branches appear only when they lead to a task"
+);
 assert.deepEqual(R.readyParents(structuralTree.tasks.filter(node => !node.parentId)).map(node => node.display), []);
 structuralTree.tasks.find(node => node.display === "Coffee").checked = true;
 structuralTree.tasks.find(node => node.display === "Outside").checked = true;
@@ -166,6 +177,7 @@ assert.equal(E.model("- [ ] Root\n  - [ ] Child\n", 0, 99).focus.display, "Root"
 assert.deepEqual(
   E.openSelectionTree({ display: "Root", checked: false, children: [
     { display: "記錄夢 🏁 0:07 ✅ 2026-09-27", checked: true, children: [] },
+    { display: "Unrelated list", checkable: false, checked: false, children: [] },
     { display: "Open", checked: false, children: [] },
   ] }).children.map(task => task.display),
   ["Open"]

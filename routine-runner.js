@@ -164,6 +164,13 @@
     return node.children.some(child => child.checkable !== false || hasCheckableDescendant(child));
   }
   function isRunnableLeaf(node) { return node.checkable !== false && !hasCheckableDescendant(node); }
+  function taskBearingTree(nodes) {
+    const keep = node => {
+      const children = node.children.map(keep).filter(Boolean);
+      return node.checkable !== false || children.length ? { ...node, children } : null;
+    };
+    return nodes.map(keep).filter(Boolean);
+  }
   function selectedRoutineTree(nodes) {
     const enabled = new Set(enabledLeaves(nodes).map(task => task.id));
     const keep = node => {
@@ -211,6 +218,6 @@
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, LIST_LINE_RE, HEADING_RE,
     parseEstimateMs, parseGoalCount, taskCommentParts, taskDisplay, normalizeTaskKey, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
-    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, hasCheckableDescendant, isRunnableLeaf, enabledLeaves, selectedRoutineTree,
+    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, hasCheckableDescendant, isRunnableLeaf, enabledLeaves, taskBearingTree, selectedRoutineTree,
     taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, readyParents, elapsedForSession };
 });

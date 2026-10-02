@@ -341,7 +341,7 @@ function recomputeTasksForSection() {
       included.get(source.parentId).children.push(node);
     }
   }
-  state.tasks = [...included.values()].filter((n) => !n.parentId);
+  state.tasks = RR.taskBearingTree([...included.values()].filter((n) => !n.parentId));
 }
 
 function applySection(idx) {
