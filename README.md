@@ -82,6 +82,11 @@ Task Done changes the canonical task checkbox only; it never rewrites an Actual 
 
 When an active scheduled block targets a parent checkbox, its card embeds the Routine Runner run view rather than a checklist. The first unfinished leaf starts active, breadcrumbs can focus its ancestors, and the view includes estimate, timer/progress, editable count goals, Pause/Resume, Skip, Done, the right-click Tasks-status menu, and the next-task preview. Embedded Done records `🏁` elapsed time (and `🥅` count), then uses the Tasks plugin's completion transformation when available; otherwise it updates the native Markdown checkbox. Skip advances without changing Markdown. Planned-but-not-active cards remain compact. Embedded state is persisted by canonical task link and its timer requests a screen wake lock. The standalone Routine Runner and embedded cards share parsing, task paths, breadcrumbs, status discovery, result formatting, and completion, while retaining independent timer state.
 
+Both runners play a short two-tone chime once when an active task's elapsed time
+reaches its planned duration (`⏱️`). Paused task and runner time does not advance
+the alert. A task that is already overdue when its card is opened does not replay
+the chime.
+
 After every direct child of an unfinished task has a non-blank checkbox status
 (for example `[x]`, `[-]`, or `[/]`), both runners pause normal advancement and
 prompt for a status on that parent. Nested parents are offered bottom-up as each

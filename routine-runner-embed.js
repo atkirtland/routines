@@ -11,6 +11,48 @@
     return RR;
   }
 
+  let durationAudioContext = null;
+
+  function audioContext() {
+    if (durationAudioContext) return durationAudioContext;
+    const AudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioContext) return null;
+    try { durationAudioContext = new AudioContext(); } catch (_) { return null; }
+    return durationAudioContext;
+  }
+
+  function primeDurationSound() {
+    const context = audioContext();
+    if (context?.state === "suspended") context.resume().catch(() => {});
+  }
+
+  function playDurationSound() {
+    const context = audioContext();
+    if (!context) return false;
+    try {
+      if (context.state === "suspended") context.resume().catch(() => {});
+      const start = context.currentTime;
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55);
+      gain.connect(context.destination);
+      [[659.25, 0], [880, 0.2]].forEach(([frequency, delay]) => {
+        const oscillator = context.createOscillator();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, start + delay);
+        oscillator.connect(gain);
+        oscillator.start(start + delay);
+        oscillator.stop(start + delay + 0.32);
+      });
+      return true;
+    } catch (_) { return false; }
+  }
+
+  function crossedPlannedDuration(previousElapsed, elapsed, estimateMs) {
+    return Number(estimateMs) > 0 && previousElapsed < estimateMs && elapsed >= estimateMs;
+  }
+
   const SHARED_STYLE_ID = "routine-runner-shared-style";
   const SHARED_CSS = `
     .rr-root,.rr-embedded{font-size:var(--font-text-size)}
@@ -44,6 +86,14 @@
       doc.head.appendChild(style);
     }
     style.textContent = SHARED_CSS;
+    // Web Audio must be resumed synchronously from a user gesture. Listening at
+    // document level lets the click (or key press) that starts an async runner
+    // unlock the context before the task card is rendered.
+    if (!doc.__routineRunnerDurationSoundUnlock && typeof doc.addEventListener === "function") {
+      doc.__routineRunnerDurationSoundUnlock = true;
+      doc.addEventListener("pointerdown", primeDurationSound, true);
+      doc.addEventListener("keydown", primeDurationSound, true);
+    }
   }
 
   function model(content, rootLine, focusLine = rootLine, defaultEstimateMs) {
@@ -571,13 +621,22 @@
         input.addEventListener("keydown", event => { if (event.key === "Enter") input.blur(); if (event.key === "Escape") { input.value = String(session.count || 0); input.blur(); } });
       });
     }
+    // Preparing Web Audio during the click that starts a routine avoids browser
+    // autoplay restrictions when the chime is needed later without a gesture.
+    primeDurationSound();
+    card.addEventListener("pointerdown", primeDurationSound, { once: true });
     const timerRow = card.createDiv({ cls: "rr-timer-row" });
     const timer = timerRow.createDiv({ cls: "rr-timer", text: "0:00" });
     const bar = card.createDiv({ cls: "rr-bar" });
     const fill = bar.createDiv({ cls: "rr-bar-fill" });
+    let previousElapsed = core.elapsedForSession(session);
     const repaint = () => {
       const elapsed = core.elapsedForSession(session);
       const remaining = task.estimateMs - elapsed;
+      if (crossedPlannedDuration(previousElapsed, elapsed, task.estimateMs)) {
+        (options.onDurationEnd || playDurationSound)();
+      }
+      previousElapsed = elapsed;
       timer.textContent = core.formatDuration(options.countDown === false ? elapsed : remaining);
       const overdue = remaining < 0;
       fill.style.width = `${task.estimateMs ? Math.min(100, elapsed / task.estimateMs * 100) : 0}%`;
@@ -816,6 +875,7 @@
       const start = header.createEl("button", { cls: "rr-btn rr-btn-primary", text: selectedCount ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})` : "Select at least one leaf task" });
       start.disabled = !selectedCount;
       start.addEventListener("click", () => {
+        primeDurationSound();
         syncSelection();
         const selectedKeys = new Set(state.selected);
         const retainSelected = (node, ancestorsEnabled = true) => {
@@ -877,6 +937,7 @@
   }
 
   return { model, replacementForTask, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+    crossedPlannedDuration, primeDurationSound, playDurationSound,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,

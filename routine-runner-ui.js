@@ -802,27 +802,30 @@ function renderSetup() {
       : "Select at least one leaf task",
   });
   startBtn.disabled = selectedCount === 0;
-  startBtn.addEventListener("click", () => enqueueAction(async () => {
-    // Persist only enabled leaves and the ancestors needed to retain their paths.
-    state.runTasks = selectedRoutineTree(state.tasks);
-    state.timing = {};
-    const leaves = enabledLeaves(state.runTasks);
-    state.index = 0;
-    state.activeLeafId = leaves[0].id;
-    state.focusId = leaves[0].id;
-    state.sessions = {};
-    state.retiredIds = [];
-    state.totalLeafCount = leaves.length;
-    state.processedLeafCount = 0;
-    state.completedCount = 0;
-    state.actionHistory = [];
-    state.initialTreeOrder = flatten(state.runTasks).map(task => task.id);
-    state.screen = "run";
-    hydrateSessions();
-    activateCurrentSession();
-    render();
-    await queueSave();
-  }));
+  startBtn.addEventListener("click", () => {
+    RRE.primeDurationSound();
+    return enqueueAction(async () => {
+      // Persist only enabled leaves and the ancestors needed to retain their paths.
+      state.runTasks = selectedRoutineTree(state.tasks);
+      state.timing = {};
+      const leaves = enabledLeaves(state.runTasks);
+      state.index = 0;
+      state.activeLeafId = leaves[0].id;
+      state.focusId = leaves[0].id;
+      state.sessions = {};
+      state.retiredIds = [];
+      state.totalLeafCount = leaves.length;
+      state.processedLeafCount = 0;
+      state.completedCount = 0;
+      state.actionHistory = [];
+      state.initialTreeOrder = flatten(state.runTasks).map(task => task.id);
+      state.screen = "run";
+      hydrateSessions();
+      activateCurrentSession();
+      render();
+      await queueSave();
+    });
+  });
 
   RRE.renderSelection(container, {
     state,

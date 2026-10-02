@@ -71,6 +71,10 @@ assert.equal(R.taskDisplay("- [x] Push-ups 🎯 20 🏁 1:05 🥅 18 ✅ 2026-09
 assert.equal(R.normalizeTaskKey("Plan ➕ 2026-09-27\u0000Fix [🏁 0:07] ✅ 2026-09-27"), "Plan\u0000Fix");
 assert.equal(R.formatDuration(65000), "1:05");
 assert.equal(R.formatDuration(-3723000), "-1:02:03");
+assert.equal(E.crossedPlannedDuration(9999, 10000, 10000), true);
+assert.equal(E.crossedPlannedDuration(10000, 11000, 10000), false);
+assert.equal(E.crossedPlannedDuration(9000, 9999, 10000), false);
+assert.equal(E.crossedPlannedDuration(-1, 0, 0), false);
 
 assert.equal(
   R.insertBeforeTasksMetadata("- [ ] Run #fitness 📅 2026-09-28", "🏁 5:00"),
@@ -197,7 +201,17 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
     task, path: [parent, task], session: { startedAt: null, elapsedBeforeStartMs: 7000 },
     onComment: async (node, value) => { savedTask = node; savedComment = value; },
   });
+  const alertSession = { startedAt: null, elapsedBeforeStartMs: 9999 };
+  let alerts = 0;
+  const alertView = E.renderRunCard(new Element(), {
+    task: { ...task, estimateMs: 10000 }, path: [task], session: alertSession,
+    onDurationEnd: () => { alerts++; },
+  });
   try {
+    alertSession.elapsedBeforeStartMs = 10000;
+    alertView.repaint();
+    alertView.repaint();
+    assert.equal(alerts, 1, "planned-duration sound fires once at the boundary");
     const elements = node => [node, ...node.children.flatMap(elements)];
     assert(!elements(container).some(node => node.cls === "rr-task-queue"), "run card should not render the removed breadcrumb queue");
     assert(!elements(container).some(node => node.tag === "input"));
@@ -244,6 +258,6 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
     assert.equal(runState.activeLeafKey, "Routine\u0000First");
     assert.deepEqual(runState.actionHistory, []);
     runView.dispose();
-  } finally { view.dispose(); delete global.document; delete global.innerWidth; delete global.innerHeight; }
+  } finally { alertView.dispose(); view.dispose(); delete global.document; delete global.innerWidth; delete global.innerHeight; }
   console.log("routine-runner: comment persistence tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
