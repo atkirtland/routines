@@ -6,6 +6,7 @@ This directory contains two deliberately separate runners:
 
 - `routine-runner.md` is the thin configuration/entry note for the checkbox routine/countdown runner. Its Obsidian adapter is `routine-runner-ui.js`, and its testable parsing, tree, timing, and formatting logic is `routine-runner.js`. `routine-runner-embed.js` is the shared nested-task component used by both runners. Schedule Runner does not share Routine Runner's active session or cache state.
 - `schedule-runner.md` contains the registry configuration and the thin entry point. It loads `schedule-runner-ui.js`, which executes the `## Plan` in today’s Daily Note and records transitions in that note’s `## Actual` section; pure timeline and classification logic remains in `schedule-runner.js`. Embedded task navigation/timers are stored separately in `schedule-runner-state.yaml`; they never share `routine-runner-state.yaml`, and Actual remains authoritative for schedule-block state.
+- Scheduled task blocks show the shared task-selection tree and `Start routine` control directly, without a separate task launcher step.
 
 Select the Daily Note date at the top of Schedule Runner. It initially defaults to today in UTC and is saved in `schedule-runner-state.yaml`, so reloads and UTC midnight keep the selected day. The selected date controls which note receives Actual entries; their timestamps still use the current UTC time. Daily Notes folder and filename settings are respected.
 

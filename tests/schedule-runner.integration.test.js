@@ -64,9 +64,10 @@ assert.match(sharedRoutineUi, /summaryActionLabel/, "The shared summary must exp
 assert.match(sharedRoutineUi, /function renderPurgeCacheButton/, "Both hosts must share the purge-cache control");
 assert.match(scheduleUi, /delete embeddedRuns\.states\[sessionKey\]/, "Scheduled purge must clear only the corresponding block session");
 assert.match(scheduleUi, /file \|\| app\.vault\.getAbstractFileByPath\(dailyPath\)/, "Current-note task links must resolve against the Daily Note");
-assert.match(scheduleUi, /text: "Begin tasks"/, "A scheduled task must wait at an explicit launcher before opening selection");
-assert.match(scheduleUi, /summaryActionLabel: "Back to task block"/, "A scheduled summary must return to the task launcher");
-assert.match(scheduleUi, /resetRunState\("ready"\)/, "Leaving a scheduled summary must reset it to the launcher");
+assert.doesNotMatch(scheduleUi, /text: "Begin tasks"/, "Scheduled tasks must show selection without an intermediate launcher");
+assert.match(scheduleUi, /screen: "select"/, "A new scheduled task session must open on the shared selection screen");
+assert.match(scheduleUi, /summaryActionLabel: "Back to task selection"/, "A scheduled summary must return to task selection");
+assert.match(scheduleUi, /resetRunState\("select"\)/, "Leaving a scheduled summary must reset it to task selection");
 assert.doesNotMatch(scheduleUi, /includeCompleted: true/, "Scheduled selection must filter completed leaves like standalone Routine Runner");
 assert.match(sharedRoutineUi, /style\.textContent = SHARED_CSS/, "Reloading either host must refresh the shared runner CSS");
 assert(!scheduleUi.includes("localStorage"), "Schedule runner state must not share browser-local storage");

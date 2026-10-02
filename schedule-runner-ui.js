@@ -170,7 +170,7 @@ try {
       embeddedRuns.states[sessionKey] = RRE.deserializeSession(embeddedRuns.legacy[canonicalKey]);
       delete embeddedRuns.legacy[canonicalKey]; saveEmbeddedState();
     }
-    const runState = embeddedRuns.states[sessionKey] ?? (embeddedRuns.states[sessionKey] = { ...RRE.createRunState(), screen: "ready" });
+    const runState = embeddedRuns.states[sessionKey] ?? (embeddedRuns.states[sessionKey] = { ...RRE.createRunState(), screen: "select" });
     const resetRunState = screen => {
       const fresh = RRE.createRunState();
       Object.keys(runState).forEach(key => delete runState[key]);
@@ -186,13 +186,10 @@ try {
     });
     const sessionHost = host.createDiv({ cls: "rr-session" });
     if (runState.screen === "ready") {
-      const begin = sessionHost.createEl("button", { cls: "rr-btn rr-btn-primary", text: "Begin tasks" });
-      begin.addEventListener("click", () => {
-        resetRunState("select");
-        saveEmbeddedState();
-        enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`));
-      });
-      return;
+      // Migrate the former launcher screen directly to the shared task
+      // selection view so scheduled and standalone routines start alike.
+      runState.screen = "select";
+      saveEmbeddedState();
     }
     // renderSession owns selection, execution (via its shared renderRunner), and summary.
     const view = RRE.renderSession(sessionHost, {
@@ -216,9 +213,9 @@ try {
       onDelete: task => enqueueEmbedded(() => RRE.deleteTask(app, evidence.target, task)),
       onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
-      summaryActionLabel: "Back to task block",
+      summaryActionLabel: "Back to task selection",
       onSummaryAction: () => {
-        resetRunState("ready");
+        resetRunState("select");
         saveEmbeddedState();
         enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`));
       },
