@@ -325,10 +325,10 @@ function recomputeTasksForSection() {
   const sourceById = new Map(state.allTasks.map((node) => [node.id, node]));
   for (const source of state.allTasks) {
     if (source.line < range.start || source.line >= range.end) continue;
-    let blocked = source.checked;
+    let blocked = source.checkable !== false && source.checked;
     for (let parentId = source.parentId; parentId && !blocked;) {
       const parent = sourceById.get(parentId);
-      blocked = parent.checked;
+      blocked = parent.checkable !== false && parent.checked;
       parentId = parent.parentId;
     }
     if (blocked) continue;
@@ -967,7 +967,7 @@ function renderRun() {
       }
       const branch = flatten([node]);
       const retired = new Set(state.retiredIds);
-      const affected = branch.filter(task => !task.children.length && !retired.has(task.id)).length;
+      const affected = branch.filter(task => RR.isRunnableLeaf(task) && !retired.has(task.id)).length;
       branch.forEach(task => retired.add(task.id));
       state.retiredIds = [...retired];
       state.processedLeafCount += affected;
@@ -1136,7 +1136,7 @@ async function rewindTo(id) {
   state.completedCount = Math.max(0, state.completedCount - undone.filter(action => action.kind === "done").length);
   state.actionHistory = state.actionHistory.slice(0, index);
   const target = map.get(id);
-  const leaf = target?.children.length ? flatten([target]).find(node => !node.children.length) : target;
+  const leaf = target && (RR.isRunnableLeaf(target) ? target : flatten([target]).find(RR.isRunnableLeaf));
   state.activeLeafId = leaf?.id || id; state.focusId = id; state.screen = "run";
   const session = currentSession();
   if (state.timing?.mode !== "break") session.startedAt = Date.now();

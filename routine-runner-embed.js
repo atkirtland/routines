@@ -112,10 +112,10 @@
       focus,
       path,
       children: focus.children,
-      leaves: core.flatten([sourceRoot]).filter(node => !node.children.length && !node.checked),
-      hasIncompleteDescendants: descendants.some(node => !node.checked),
-      complete: core.flatten([sourceRoot]).filter(node => node.checked).length,
-      total: core.flatten([sourceRoot]).length,
+      leaves: core.flatten([sourceRoot]).filter(node => core.isRunnableLeaf(node) && !node.checked),
+      hasIncompleteDescendants: descendants.some(node => node.checkable !== false && !node.checked),
+      complete: core.flatten([sourceRoot]).filter(node => node.checkable !== false && node.checked).length,
+      total: core.flatten([sourceRoot]).filter(node => node.checkable !== false).length,
     };
   }
 
@@ -338,9 +338,9 @@
       button.disabled = disabled;
       button.addEventListener("click", () => { menu.remove(); action(); });
     };
-    item("Edit estimated time…", async () => {
+    if (options.onEstimate) item("Edit estimated time…", async () => {
       const value = await durationPicker(node.estimateMs);
-      if (value != null) options.onEstimate?.(value);
+      if (value != null) options.onEstimate(value);
     });
     item(node.children.length ? "Delete task and children…" : "Delete task…", options.onDelete, options.deleteDisabled);
     const rect = anchor.getBoundingClientRect(), box = menu.getBoundingClientRect();
@@ -355,12 +355,13 @@
     path.forEach((node, index) => {
       if (index) container.createSpan({ cls: "rr-crumb-sep", text: "→" });
       const current = node.line === currentLine;
-      const crumb = buttonMode
+      const actionable = buttonMode && node.checkable !== false;
+      const crumb = actionable
         ? container.createEl("button", { cls: "rr-embedded-crumb", text: node.display })
         : container.createSpan({ cls: current ? "rr-crumb rr-crumb-current" : "rr-crumb", text: node.display });
-      if (buttonMode) crumb.disabled = current;
-      if (!current) crumb.addEventListener("click", () => onFocus?.(node.line, node));
-      if (onContext) {
+      if (actionable) crumb.disabled = current;
+      if (actionable && !current) crumb.addEventListener("click", () => onFocus?.(node.line, node));
+      if (onContext && node.checkable !== false) {
         crumb.title = "Right-click to edit this task's comment";
         crumb.addEventListener("contextmenu", event => { event.preventDefault(); event.stopPropagation(); onContext(crumb, node); });
       }
@@ -489,7 +490,7 @@
     const leaves = [];
     function visit(node, ancestorsEnabled) {
       const enabled = ancestorsEnabled && node.selected !== false;
-      if (!node.children.length) {
+      if (requireCore().isRunnableLeaf(node)) {
         if (enabled) leaves.push(node);
         return;
       }
@@ -502,7 +503,7 @@
   // Standalone supplies an open-task tree to the shared selector. Scheduled
   // roots need the same pruning before they reach that selector.
   function openSelectionTree(node) {
-    if (!node || node.checked) return null;
+    if (!node || (node.checkable !== false && node.checked)) return null;
     const children = node.children.map(openSelectionTree).filter(Boolean);
     if (node.children.length && !children.length) return null;
     return { ...node, children };
@@ -557,7 +558,7 @@
     top.createSpan({ cls: "rr-summary", text: `${leaves.length} leaf task${leaves.length === 1 ? "" : "s"} · ${core.formatDuration(leaves.reduce((sum, leaf) => sum + leaf.estimateMs, 0))}` });
     const actions = tools.createDiv({ cls: "rr-tools-row" });
     const matchingNodes = () => visibleRows().filter(row => row.selfMatches).map(row => row.node);
-    const selectionNodes = () => (state.taskQuery.trim() ? matchingNodes() : core.flatten(tasks)).filter(node => !locked(node));
+    const selectionNodes = () => (state.taskQuery.trim() ? matchingNodes() : core.flatten(tasks)).filter(node => node.checkable !== false && !locked(node));
     const structureNodes = () => state.taskQuery.trim() ? matchingNodes() : core.flatten(tasks);
     const action = (label, handler, cls = "rr-tool-btn") => {
       const button = actions.createEl("button", { cls, text: label });
@@ -586,10 +587,10 @@
       if (state.taskQuery.trim() && !selfMatches) row.addClass("rr-review-item-context");
       if (node.id === state.setupCursorId) row.addClass("rr-review-item-active");
       const statusCell = row.createDiv({ cls: "rr-status-checkbox-cell" });
-      const statusCheckbox = statusCell.createEl("input", { attr: { type: "checkbox", title: node.checked ? "Task already has a status" : "Mark task done", "aria-label": `${node.checked ? "Completed" : "Mark done"}: ${node.display}` } });
-      statusCheckbox.style.transform = `translateX(${depth * 1.25}em)`;
-      statusCheckbox.checked = Boolean(node.checked);
-      statusCheckbox.disabled = Boolean(node.checked) || locked(node) || !options.onCheck;
+      const statusCheckbox = node.checkable === false ? null : statusCell.createEl("input", { attr: { type: "checkbox", title: node.checked ? "Task already has a status" : "Mark task done", "aria-label": `${node.checked ? "Completed" : "Mark done"}: ${node.display}` } });
+      if (statusCheckbox) statusCheckbox.style.transform = `translateX(${depth * 1.25}em)`;
+      if (statusCheckbox) statusCheckbox.checked = Boolean(node.checked);
+      if (statusCheckbox) statusCheckbox.disabled = Boolean(node.checked) || locked(node) || !options.onCheck;
       const markStatus = async status => {
         statusCheckbox.disabled = true;
         try {
@@ -598,8 +599,8 @@
           redraw();
         } catch (error) { statusCheckbox.checked = false; statusCheckbox.disabled = false; options.onEditError?.(error); }
       };
-      statusCheckbox.addEventListener("change", () => { if (statusCheckbox.checked) markStatus(null); });
-      statusCheckbox.addEventListener("contextmenu", event => {
+      statusCheckbox?.addEventListener("change", () => { if (statusCheckbox.checked) markStatus(null); });
+      statusCheckbox?.addEventListener("contextmenu", event => {
         if (locked(node) || !options.onCheck) return;
         event.preventDefault(); event.stopPropagation();
         showStatusMenu(options.app, statusCheckbox, markStatus).catch(error => options.onEditError?.(error));
@@ -623,11 +624,11 @@
           redraw();
         } catch (error) { options.onEditError?.(error); }
       };
-      if (options.onEstimate || options.onDelete) text.addEventListener("contextmenu", event => {
+      if ((node.checkable !== false && options.onEstimate) || options.onDelete) text.addEventListener("contextmenu", event => {
         event.preventDefault(); event.stopPropagation();
         showTaskEditMenu(text, node, {
           deleteDisabled: locked(node) || !options.onDelete,
-          onEstimate: async value => {
+          onEstimate: node.checkable === false ? null : async value => {
             try { const updated = await options.onEstimate?.(node, value); if (updated) Object.assign(node, updated); redraw(); }
             catch (error) { options.onEditError?.(error); }
           },
@@ -644,15 +645,16 @@
         });
       });
       const badges = row.createDiv({ cls: "rr-badge-group" });
-      if (node.goalCount != null) badges.createSpan({ cls: "rr-badge", text: `🎯 ${node.goalCount}` });
-      const estimate = options.onEstimate
+      if (node.checkable !== false && node.goalCount != null) badges.createSpan({ cls: "rr-badge", text: `🎯 ${node.goalCount}` });
+      const estimate = node.checkable === false ? null : options.onEstimate
         ? badges.createEl("button", { cls: "rr-badge rr-badge-button", text: core.formatDuration(node.estimateMs), attr: { title: "Edit estimated time", "aria-label": `Edit estimated time for ${node.display}` } })
         : badges.createSpan({ cls: "rr-badge", text: core.formatDuration(node.estimateMs) });
-      if (options.onEstimate) estimate.addEventListener("click", event => { event.stopPropagation(); editEstimate(); });
+      if (estimate && options.onEstimate) estimate.addEventListener("click", event => { event.stopPropagation(); editEstimate(); });
       const checkboxCell = row.createDiv({ cls: "rr-checkbox-cell" });
-      const checkbox = checkboxCell.createEl("input", { attr: { type: "checkbox" } });
-      checkbox.checked = node.selected !== false; checkbox.disabled = !ancestorsEnabled || locked(node);
-      checkbox.addEventListener("change", () => { node.selected = checkbox.checked; redraw(); });
+      const checkbox = node.checkable === false ? null : checkboxCell.createEl("input", { attr: { type: "checkbox" } });
+      if (checkbox) checkbox.checked = node.selected !== false;
+      if (checkbox) checkbox.disabled = !ancestorsEnabled || locked(node);
+      checkbox?.addEventListener("change", () => { node.selected = checkbox.checked; redraw(); });
       const reorder = row.createDiv({ cls: "rr-reorder" });
       const rewindTitle = isProcessed ? options.rewindTitle?.(node, nodeKey) : null;
       if (rewindTitle) {
@@ -706,7 +708,7 @@
       else if (event.key === "G") next = rows.length - 1;
       else if (event.key === "g") { if (pendingG) next = 0; pendingG = !pendingG; event.preventDefault(); if (next !== current) { state.setupCursorId = rows[next].node.id; redraw(); } return; }
       else if (event.key === "/") { event.preventDefault(); container.querySelector(".rr-task-search")?.focus(); return; }
-      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item?.ancestorsEnabled && !locked(item.node)) item.node.selected = item.node.selected === false; }
+      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item && item.node.checkable !== false && item.ancestorsEnabled && !locked(item.node)) item.node.selected = item.node.selected === false; }
       else if (event.key === "u") { const item = rows[current]; if (item && options.rewindTitle?.(item.node, keyOf(item.node))) { event.preventDefault(); options.onRewind(item.node, keyOf(item.node)); } return; }
       else if (event.key === "h") { const item = rows[current]; if (item?.node.children.length && !state.collapsedIds.includes(item.node.id)) state.collapsedIds.push(item.node.id); }
       else if (event.key === "l") state.collapsedIds = state.collapsedIds.filter(id => id !== rows[current]?.node.id);
@@ -920,7 +922,7 @@
     const checkedInFile = new Set(fileAll.filter(node => node.checked).map(node => core.taskPath(node, fileMap).map(part => part.display).join("\u0000")));
     const isDone = node => node.checked || retired.has(keyOf(node)) || checkedInFile.has(keyOf(node));
     const orderIndex = new Map((state.order || []).map((key, index) => [key, index]));
-    const leaves = all.filter(node => !node.children.length && !isDone(node))
+    const leaves = all.filter(node => core.isRunnableLeaf(node) && !isDone(node))
       .sort((a, b) => (orderIndex.get(keyOf(a)) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(keyOf(b)) ?? Number.MAX_SAFE_INTEGER));
     const readyParents = core.readyParents(fileAll.filter(node => !node.parentId), node => node.checked,
       node => byKey.has(core.taskPath(node, fileMap).map(part => part.display).join("\u0000")))
@@ -951,7 +953,7 @@
     });
     const advance = () => {
       settle(session);
-      const affected = core.flatten([focus]).filter(node => !node.children.length && !retired.has(keyOf(node))).length;
+      const affected = core.flatten([focus]).filter(node => core.isRunnableLeaf(node) && !retired.has(keyOf(node))).length;
       const retiredKeys = core.flatten([focus]).map(keyOf); retiredKeys.forEach(key => retired.add(key));
       state.actionHistory = [...(state.actionHistory || []), { key: keyOf(focus), kind: "skip", retiredKeys, affected }];
       state.retired = [...retired]; state.focusKey = null; state.activeLeafKey = null;
@@ -961,7 +963,7 @@
     };
     const finish = async status => {
       settle(session);
-      const affected = core.flatten([focus]).filter(node => !node.children.length && !retired.has(keyOf(node))).length;
+      const affected = core.flatten([focus]).filter(node => core.isRunnableLeaf(node) && !retired.has(keyOf(node))).length;
       state.completedCount = (state.completedCount || 0) + 1;
       state.processedCount = (state.processedCount || 0) + affected;
       core.flatten([focus]).forEach(node => retired.add(keyOf(node)));
@@ -1020,7 +1022,7 @@
       onAdd: options.onAdd,
       onEstimate: options.onEstimate,
       onCheck: async (node, status) => {
-        const affected = core.flatten([node]).filter(part => !part.children.length && !retired.has(keyOf(part))).length;
+        const affected = core.flatten([node]).filter(part => core.isRunnableLeaf(part) && !retired.has(keyOf(part))).length;
         const retiredKeys = core.flatten([node]).map(keyOf);
         const updated = await options.onCheck?.(node, status);
         retiredKeys.forEach(value => retired.add(value));
@@ -1053,7 +1055,7 @@
         state.retired = [...nextRetired]; state.processedCount = Math.max(0, (state.processedCount || 0) - undone.reduce((sum, action) => sum + (action.affected || 0), 0));
         state.completedCount = Math.max(0, (state.completedCount || 0) - undone.filter(action => action.kind === "done").length);
         const rewindNode = byKey.get(key);
-        const rewindLeaf = rewindNode && (rewindNode.children.length ? core.flatten([rewindNode]).find(node => !node.children.length) : rewindNode);
+        const rewindLeaf = rewindNode && (core.isRunnableLeaf(rewindNode) ? rewindNode : core.flatten([rewindNode]).find(core.isRunnableLeaf));
         state.actionHistory = history.slice(0, index); state.activeLeafKey = rewindLeaf ? keyOf(rewindLeaf) : key; state.focusKey = key;
         const selected = state.sessions[key] || (state.sessions[key] = { elapsedBeforeStartMs: 0, startedAt: null, count: 0 });
         if (state.timing?.mode !== "break") selected.startedAt = Date.now();
@@ -1076,7 +1078,7 @@
     const all = core.flatten([current.root]);
     const map = new Map(all.map(node => [node.id, node]));
     const keyOf = node => core.taskPath(node, map).map(part => part.display).join("\u0000");
-    const leaves = all.filter(node => !node.children.length && !node.checked);
+    const leaves = all.filter(node => core.isRunnableLeaf(node) && !node.checked);
     const validKeys = new Set(leaves.map(keyOf));
     state.source = options.sourcePath || state.source;
     state.rootBlockId = options.rootBlockId || state.rootBlockId;
@@ -1109,7 +1111,7 @@
         ordered.forEach(node => { state.enabled[keyOf(node)] = node.selected !== false; });
         state.treeOrder = ordered.map(keyOf);
         state.selected = enabledLeaves(selectionTasks).map(keyOf).filter(key => validKeys.has(key));
-        state.order = core.flatten(selectionTasks).filter(node => !node.children.length).map(keyOf);
+        state.order = core.flatten(selectionTasks).filter(core.isRunnableLeaf).map(keyOf);
         notify();
       };
       syncSelection();
@@ -1138,7 +1140,7 @@
         const selectedKeys = new Set(state.selected);
         const retainSelected = (node, ancestorsEnabled = true) => {
           const enabled = ancestorsEnabled && node.selected !== false;
-          if (!node.children.length) return enabled && selectedKeys.has(keyOf(node)) ? { ...node, children: [] } : null;
+          if (core.isRunnableLeaf(node)) return enabled && selectedKeys.has(keyOf(node)) ? { ...node, children: [] } : null;
           const children = node.children.map(child => retainSelected(child, enabled)).filter(Boolean);
           return children.length ? { ...node, selected: true, children } : null;
         };

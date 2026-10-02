@@ -109,6 +109,22 @@ assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: 1000, startedAt: 5000 }
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: undefined, startedAt: "5000" }, 8000), 3000);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: "1000", startedAt: null }, 8000), 1000);
 
+const structuralTree = R.parseRoutineText(`- [ ] Routine
+  - Morning
+    - [ ] Coffee
+    - Notes
+      - [x] Journal
+  - [ ] Outside
+`);
+assert.equal(structuralTree.tasks.length, 6);
+assert.equal(structuralTree.tasks[1].checkable, false);
+assert.equal(structuralTree.tasks[2].parentId, structuralTree.tasks[1].id);
+assert.deepEqual(R.enabledLeaves(structuralTree.tasks.filter(node => !node.parentId)).map(node => node.display), ["Coffee", "Journal", "Outside"]);
+assert.deepEqual(R.readyParents(structuralTree.tasks.filter(node => !node.parentId)).map(node => node.display), []);
+structuralTree.tasks.find(node => node.display === "Coffee").checked = true;
+structuralTree.tasks.find(node => node.display === "Outside").checked = true;
+assert.deepEqual(R.readyParents(structuralTree.tasks.filter(node => !node.parentId)).map(node => node.display), ["Routine"]);
+
 const statusTree = R.parseRoutineText(`- [ ] Grandparent
   - [ ] Parent
     - [x] Done

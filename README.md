@@ -105,6 +105,12 @@ metadata (`📅 ✅ ➕ ⏫ 🔁 🆔 ⛔ …`), runner fields (`⏱ 🎯 🏁 �
 groups such as `[🏁 5:00, 🥅 3]`, comments, and block IDs. Completing a task
 therefore never changes its label or its saved key.
 
+Ordinary Markdown list items may be mixed into a routine as structural group
+labels. They appear in the tree and establish parent/child indentation, but have
+no task-status checkbox, estimate, timer, or completion step. Their descendant
+checkbox tasks remain runnable, and structural levels are transparent when the
+runner decides whether a checkbox parent is ready to receive a status.
+
 Processed tasks are greyed and struck through: those skipped or completed in this
 run, plus any task already checked in the note. Tasks processed in this run have
 a **↶ Undo** button (or `u` in the tree). Undo is a rewind: it reopens that task

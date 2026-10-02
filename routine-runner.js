@@ -10,6 +10,7 @@
   const TIME_GOAL_RE = /⏱️?\s*(\d+):(\d{2})(?::(\d{2}))?/;
   const COUNT_GOAL_RE = /🎯\s*(\d+)/;
   const TASK_LINE_RE = /^(\s*[-*+]\s\[)([^\]])(\]\s?)(.*)$/;
+  const LIST_LINE_RE = /^(\s*[-*+]\s+)(.*)$/;
   const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
   const TASKS_METADATA_EMOJI_RE = /[🔺⏫🔼🔽⏬🔁➕🛫⏳📅✅❌🆔⛔]/;
 
@@ -103,19 +104,21 @@
       const heading = line.match(HEADING_RE);
       if (heading) headings.push({ line: index, level: heading[1].length, text: heading[2] });
       const task = line.match(TASK_LINE_RE);
-      if (!task) return;
-      const description = task[4];
+      const list = task ? null : line.match(LIST_LINE_RE);
+      if (!task && !list) return;
+      const description = task ? task[4] : list[2];
       // Metadata and block IDs are not part of the human-facing label; the
       // full text stays in sourceLine for recovery/persistence.
       const commentParts = taskCommentParts(description);
       const display = taskDisplay(description);
-      const prefix = task[1].slice(0, task[1].search(/[-*+]/));
+      const marker = task ? task[1] : list[1];
+      const prefix = marker.slice(0, marker.search(/[-*+]/));
       let indent = 0;
       for (const character of prefix) indent += character === "\t" ? 4 : 1;
       while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
       const parent = stack.at(-1) || null;
       const node = { id: `task-${nextId++}`, line: index, sourceLine: line, indent,
-        parentId: parent?.id ?? null, children: [], checked: task[2] !== " ", selected: true,
+        parentId: parent?.id ?? null, children: [], checkable: Boolean(task), checked: task ? task[2] !== " " : false, selected: true,
         display, comment: commentParts.comment, displayPath: [...(parent?.displayPath ?? []), display],
         estimateMs: parseEstimateMs(description, defaultEstimateMs), goalCount: parseGoalCount(description) };
       if (parent) parent.children.push(node);
@@ -154,8 +157,12 @@
   }
   function enabledLeaves(nodes) {
     const map = nodeMap(nodes);
-    return flatten(nodes).filter(node => node.children.length === 0 && effective(node, map));
+    return flatten(nodes).filter(node => isRunnableLeaf(node) && effective(node, map));
   }
+  function hasCheckableDescendant(node) {
+    return node.children.some(child => child.checkable !== false || hasCheckableDescendant(child));
+  }
+  function isRunnableLeaf(node) { return node.checkable !== false && !hasCheckableDescendant(node); }
   function selectedRoutineTree(nodes) {
     const enabled = new Set(enabledLeaves(nodes).map(task => task.id));
     const keep = node => {
@@ -182,14 +189,15 @@
     return { parsed, root: cloneTaskTree(source) };
   }
   function availableLeaves(root) {
-    return root ? flatten([root]).filter(node => !node.checked && node.children.every(child => child.checked)) : [];
+    return root ? flatten([root]).filter(node => isRunnableLeaf(node) && !node.checked) : [];
   }
   // An unfinished parent becomes actionable only after every direct child has
   // acquired a checkbox status. Since `checked` means "symbol is not a space",
   // this includes Tasks statuses such as [x], [-], and [/].
   function readyParents(nodes, isMarked = node => node.checked, isEligible = () => true) {
-    return flatten(nodes).filter(node => node.children.length && !isMarked(node)
-      && isEligible(node) && node.children.every(isMarked));
+    const branchMarked = node => node.checkable === false ? node.children.every(branchMarked) : isMarked(node);
+    return flatten(nodes).filter(node => node.checkable !== false && hasCheckableDescendant(node) && !isMarked(node)
+      && isEligible(node) && node.children.every(branchMarked));
   }
   function elapsedForSession(session, now = Date.now()) {
     if (!session) return 0;
@@ -200,8 +208,8 @@
     return Math.max(0, elapsedBeforeStartMs) + Math.max(0, Number(now) - startedAt);
   }
 
-  return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, HEADING_RE,
+  return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, LIST_LINE_RE, HEADING_RE,
     parseEstimateMs, parseGoalCount, taskCommentParts, taskDisplay, normalizeTaskKey, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
-    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, enabledLeaves, selectedRoutineTree,
+    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, hasCheckableDescendant, isRunnableLeaf, enabledLeaves, selectedRoutineTree,
     taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, readyParents, elapsedForSession };
 });
