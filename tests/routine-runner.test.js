@@ -267,6 +267,15 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
   parsed = R.parseRoutineText(content);
   const cancelled = await E.checkTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "New child"), { symbol: "-", name: "Cancelled", type: "CANCELLED" });
   assert.match(cancelled.sourceLine, /^  - \[-\] New child/);
+  assert.match(cancelled.sourceLine, /🕐 \d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}) ❌ \d{4}-\d{2}-\d{2}/, "task-tree cancellation receives lifecycle date and time");
+  {
+    let treeContent = "- [ ] Tree done";
+    const treeApp = { plugins: { plugins: { "obsidian-tasks-plugin": {
+      loadData: async () => ({ setDoneDate: true }),
+    } } }, vault: { read: async () => treeContent, modify: async (_file, value) => { treeContent = value; } } };
+    const treeDone = await E.checkTask(treeApp, { path: "Tasks.md" }, R.parseRoutineText(treeContent).tasks[0], null, fakeInstant(240));
+    assert.equal(treeDone.sourceLine, "- [x] Tree done 🕐 17:42:31-04:00 ✅ 2026-10-02", "task-tree Done uses the lifecycle transaction");
+  }
   parsed = R.parseRoutineText(content);
   await E.deleteTask(app, { path: "Tasks.md" }, parsed.tasks.find(node => node.display === "A"));
   assert.doesNotMatch(content, /A child/, "deleting a parent removes its complete subtree");

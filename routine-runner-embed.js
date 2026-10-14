@@ -303,19 +303,15 @@
     return { content: next, line: source.line, sourceLine: lines[source.line], estimateMs: Math.max(0, estimateMs) };
   }
 
-  async function checkTask(app, file, task, status = null) {
-    const content = await app.vault.read(file), lines = content.split(/\r?\n/);
-    const { task: source } = locateTask(content, task), core = requireCore();
-    const match = lines[source.line].match(core.TASK_LINE_RE);
-    if (!match) throw new Error("Referenced line is no longer a task.");
-    const before = lines[source.line];
-    const symbol = status?.symbol ?? "x";
-    lines[source.line] = `${match[1]}${symbol}${match[3]}${match[4]}`;
-    if (lines[source.line] === before) return { content, line: source.line, sourceLine: before, checked: symbol !== " ", undo: null };
-    const next = lines.join("\n");
-    await app.vault.modify(file, next);
-    return { content: next, line: source.line, sourceLine: lines[source.line], checked: symbol !== " ",
-      undo: { start: source.line, beforeLines: [before], afterLines: [lines[source.line]] } };
+  async function checkTask(app, file, task, status = null, instant = new Date()) {
+    const content = await app.vault.read(file);
+    const { task: source } = locateTask(content, task);
+    // A tree checkbox is a direct status edit, not a recurrence command, but
+    // terminal statuses still use the same configured date/time handling as Done.
+    const selectedStatus = status || { symbol: "x", name: "Done", type: "DONE" };
+    const transaction = await completeTaskTransaction(app, file, content, source.line, selectedStatus, null, instant);
+    return { content: transaction.content, line: source.line, sourceLine: transaction.undo.afterLines[0],
+      checked: selectedStatus.symbol !== " ", undo: transaction.undo };
   }
 
   async function deleteTask(app, file, task) {

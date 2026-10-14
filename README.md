@@ -12,7 +12,11 @@ Select the Daily Note date at the top of Schedule Runner. It initially defaults 
 
 All Schedule Runner block clocks and the reusable time editor use UTC. Start times and completed context end times are editable. Every edit is checked against reconstructed starts, ends, parent intervals, descendants, and sibling transitions. The Daily Note is authoritative for running state: active state is reconstructed from Markdown after every render.
 
-Tasks completed or cancelled through a runner receive a local lifecycle marker (`🕐 HH:mm:ss±HH:mm`, or `Z` at UTC) when the corresponding Tasks date (`✅` or `❌`) is present. This marker is kept in Markdown but hidden from runner labels and task identity.
+Tasks completed or cancelled through a runner—using Done, a right-click status,
+or the task-tree checkbox/status menu—receive a local lifecycle marker
+(`🕐 HH:mm:ss±HH:mm`, or `Z` at UTC) when the corresponding Tasks date (`✅` or
+`❌`) is present. This marker is kept in Markdown but hidden from runner labels
+and task identity.
 
 ## Timeline grammar
 
