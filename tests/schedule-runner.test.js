@@ -31,6 +31,11 @@ assert.equal(S.resolveTaskClassification("Do it", null), true);
 assert.deepEqual(S.taskLink("p [[#^morning]]"), { path: "", blockId: "morning" });
 assert.deepEqual(S.taskLink("p [[Tasks#^morning|Morning]]"), { path: "Tasks", blockId: "morning" });
 assert.equal(S.taskBlockId("p [[#^morning]]"), "morning");
+assert.deepEqual(S.taskLinks("p [[#^morning]] [[#^zaoming]]"), [
+  { path: "", blockId: "morning" },
+  { path: "", blockId: "zaoming" },
+]);
+assert.deepEqual(S.taskBlockIds("p [[#^morning]] [[Tasks#^zaoming|早]]"), ["morning", "zaoming"]);
 
 assert.equal(S.validateRegistry({ projects: { a: { parents: ["b"] }, b: { parents: ["a"] } }, "exclusive-groups": [] }).ok, false);
 assert.equal(S.validateRegistry({ projects: { a: { parents: ["z"] } }, "exclusive-groups": [] }).ok, false);
@@ -173,6 +178,8 @@ doneActual = S.doneTaskActuals(doneActual, "eat", new Date("2026-09-27T09:20:00Z
 assert.equal(S.actualState(doneActual).mainLeaf, null);
 assert.equal(S.actualState(doneActual).contexts.length, 0);
 assert.match(doneActual, /0901-0920 \[\[Tasks#\^eat\|Eat\]\]/);
+const multiTaskActual = `## Actual\n- 1300 p [[#^morning]] [[#^zaoming]] ^a-p1-1\n`;
+assert.equal(S.actualState(S.doneTaskActuals(multiTaskActual, "zaoming", new Date("2026-09-27T13:30:00Z"))).mainLeaf, null);
 const descendant = `## Actual\n- 0900 [[Tasks#^eat|Eat]] ^a-eat-1\n  - 0905 Other ^a-other-1\n`;
 assert.throws(() => S.doneTaskActuals(descendant, "eat"), /active descendant/);
 let pausedMain = S.startBlock(`## Plan\n- 0900 Focus ^p-focus\n`, S.parseSection(`## Plan\n- 0900 Focus ^p-focus\n`, "Plan").entries[0], new Date("2026-09-27T09:00:00Z"));

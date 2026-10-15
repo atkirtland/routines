@@ -73,16 +73,15 @@ try {
     try { await write(text, SB.editActualTime(text, entry.line, edge, value)); } catch (x) { new Notice(x.message); }
   };
   const actualPlanSlug = entry => entry.id?.match(/^a-(.+)-\d+$/)?.[1] || null;
-  const displayBody = (body, evidence) => evidence?.displayText
-    ? String(body).replace(/\[\[[^\]]+\]\]/u, evidence.displayText)
-    : body;
-  const addBodyLabel = (row, body, evidence) => {
-    if (evidence?.isTask) row.createEl("span", { text: "TASK", cls: "sb-task-badge" });
-    row.createEl("strong", { text: displayBody(body, evidence) || "Main boundary" });
+  const displayBody = (body, evidences) => {
+    let index = 0;
+    return String(body || "").replace(/\[\[[^\]]+\]\]/gu, link => evidences?.[index++]?.displayText || link);
   };
-  const taskEvidence = async body => {
-    const link = SB.taskLink(body);
-    if (!link) return null;
+  const addBodyLabel = (row, body, evidences) => {
+    if (evidences?.some(evidence => evidence.isTask)) row.createEl("span", { text: "TASK", cls: "sb-task-badge" });
+    row.createEl("strong", { text: displayBody(body, evidences) || "Main boundary" });
+  };
+  const taskEvidence = async link => {
     // An empty link path is Obsidian's current-note shorthand: [[#^block-id]].
     const target = link.path
       ? app.metadataCache.getFirstLinkpathDest(link.path, dailyPath)
@@ -99,6 +98,7 @@ try {
     // Routine Runner display rules (metadata, comments, block IDs).
     return { source: SB.resolveTaskClassification(line, pageProject), label: target.basename, displayText: nested ? nested.root.display : RR.taskDisplay(line), target, taskText, line, lineIndex, blockId: link.blockId, isTask, completed: /^\s*[-*+]\s+\[[xX]\]/.test(line), hasIncompleteDescendants };
   };
+  const taskEvidences = body => Promise.all(SB.taskLinks(body).map(taskEvidence));
   // Only write coordination and view cleanup survive a Dataview re-execution.
   // Routine session data is rehydrated from schedule-runner-state.yaml below.
   const embeddedCoordinator = window.__scheduleRunnerRoutineCoordinator ?? (window.__scheduleRunnerRoutineCoordinator = { disposers: [], actionTail: Promise.resolve(), saveTimer: null });
@@ -159,11 +159,18 @@ try {
       writeEmbeddedState(embeddedStateSnapshot());
     }, 250);
   };
-  const addEmbeddedRoutine = async (card, evidence, sessionKey) => {
-    if (!evidence?.isTask || evidence.lineIndex < 0) return;
+  const addEmbeddedRoutine = async (card, evidences, sessionKey) => {
+    evidences = evidences.filter(evidence => evidence?.isTask && evidence.lineIndex >= 0);
+    if (!evidences.length) return;
+    const evidence = evidences[0];
+    if (evidences.some(item => item.target.path !== evidence.target.path)) {
+      card.createDiv({ cls: "sb-error", text: "Linked tasks in one time block must be in the same note." });
+      return;
+    }
     await ensureEmbeddedState();
-    const canonicalKey = `${evidence.target.path}#^${evidence.blockId}`;
-    const initial = RRE.model(evidence.taskText, evidence.lineIndex);
+    const canonicalKey = `${evidence.target.path}#^${evidences.map(item => item.blockId).join("+")}`;
+    const rootLines = evidences.map(item => item.lineIndex);
+    const initial = RRE.multiRootModel(evidence.taskText, rootLines);
     if (!initial) return;
     const host = card.createDiv({ cls: "rr-embedded" });
     if (!embeddedRuns.states[sessionKey] && embeddedRuns.legacy?.[canonicalKey]) {
@@ -197,8 +204,8 @@ try {
     }
     // renderSession owns selection, execution (via its shared renderRunner), and summary.
     const view = RRE.renderSession(sessionHost, {
-      app, content: evidence.taskText, rootLine: evidence.lineIndex, state: runState,
-      sourcePath: evidence.target.path, rootBlockId: evidence.blockId,
+      app, content: evidence.taskText, rootLine: evidence.lineIndex, rootLines, state: runState,
+      sourcePath: evidence.target.path, rootBlockId: evidences.map(item => item.blockId).join("+"),
       onStateChange: saveEmbeddedState,
       onComment: (task, comment) => enqueueEmbedded(async () => {
         Object.assign(task, await RRE.saveTaskComment(app, evidence.target, task, comment));
@@ -229,10 +236,10 @@ try {
         let undoToken = null;
         const completion = enqueueEmbedded(async () => {
           const current = await app.vault.read(evidence.target);
-          const rootMatches = current.split(/\r?\n/).map((value, index) => value.match(new RegExp(`\\^${evidence.blockId}\\s*$`)) ? index : -1).filter(index => index >= 0);
-          if (rootMatches.length !== 1) throw new Error(rootMatches.length ? "The linked root block ID is ambiguous" : "The linked root task no longer exists");
-          const rootLine = rootMatches[0];
-          const currentLine = RRE.lineForKey(current, rootLine, taskKey || runState.focusKey) ?? line;
+          const lines = current.split(/\r?\n/);
+          const currentRootLines = evidences.map(item => lines.findIndex(value => value.match(new RegExp(`\\^${item.blockId}\\s*$`))));
+          if (currentRootLines.some(index => index < 0)) throw new Error("A linked root task no longer exists");
+          const currentLine = RRE.lineForKeys(current, currentRootLines, taskKey || runState.focusKey) ?? line;
           const transaction = await RRE.completeTaskTransaction(app, evidence.target, current, currentLine, status, result);
           undoToken = transaction.undo;
         });
@@ -313,8 +320,10 @@ try {
     const isActive = e => [...state.mainChain, ...state.contexts].some(a => actualPlanSlug(a) === planSlug(e));
     const hasOccurred = e => state.section.entries.some(a => actualPlanSlug(a) === planSlug(e));
     const routineKeyFor = e => plan.entries.find(p => planSlug(p) === actualPlanSlug(e))?.id || e.id;
+    const runningForRoutineKey = key => Object.entries(embeddedRuns.states)
+      .some(([sessionKey, session]) => (sessionKey === key || sessionKey.startsWith(`${key}::`)) && RRE.runningSession(session));
     const switchBlocked = (source, target) => SB.actualState(source).mainChain.slice(SB.switchDepth(source, target))
-      .some(e => RRE.runningSession(embeddedRuns.states[routineKeyFor(e)]));
+      .some(e => runningForRoutineKey(routineKeyFor(e)));
     const renderedPath = dailyPath;
     const activate = target => enqueueEmbedded(async () => {
       try {
@@ -335,17 +344,18 @@ try {
       selector.hidden = false;
       selector.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
     };
-    const activeIds = new Set([...state.mainChain, ...state.contexts].map(x => x.id));
+    const attachedRoutineKeys = new Set();
     if (state.mainChain.length || state.contexts.length) {
       root.createEl("h3", { text: "Active" });
       for (const e of [...state.mainChain, ...state.contexts]) {
         const card = root.createEl("div", { cls: "sb-card sb-active" });
-        const evidence = await taskEvidence(e.body);
-        const row = card.createEl("div", { cls: "sb-row" }); addBodyLabel(row, e.body, evidence);
+        const evidences = await taskEvidences(e.body);
+        const row = card.createEl("div", { cls: "sb-row" }); addBodyLabel(row, e.body, evidences);
         const time = row.createEl("button", { text: e.role === "context" ? `${e.start}-` : e.start }); time.onclick = () => editTime(text, e);
         if (e.role === "context" && e.end) { const end = row.createEl("button", { text: e.end }); end.onclick = () => editTime(text, e, "end"); }
         const pid = actualPlanSlug(e), planned = plan.entries.find(p => p.id && p.id.replace(/^p-/, "") === pid);
         const routineKey = planned?.id || e.id;
+        attachedRoutineKeys.add(routineKey);
         const routineRunning = RRE.runningSession(embeddedRuns.states[routineKey]);
         if (e.role === "main") row.appendChild(button("Switch block", openSwitch, routineRunning));
         else row.appendChild(button("End", () => enqueueEmbedded(async () => {
@@ -359,13 +369,9 @@ try {
         if (routineRunning) card.createDiv({ cls: "sb-muted", text: "Pause the routine timer before switching or ending this scheduled block." });
         const progress = planned && SB.progressFor(planned, e, new Date());
         if (progress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${progress.percent}%`; if (progress.overrun) card.createDiv({ text: `Overrun ${progress.overrun}m`, cls: "sb-error" }); }
-        await addEmbeddedRoutine(card, evidence, routineKey);
+        await addEmbeddedRoutine(card, evidences, routineKey);
       }
     }
-    const attachedRoutineKeys = new Set([...state.mainChain, ...state.contexts].map(e => {
-      const pid = actualPlanSlug(e), planned = plan.entries.find(p => p.id && p.id.replace(/^p-/, "") === pid);
-      return planned?.id || e.id;
-    }));
     for (const [key, routine] of Object.entries(embeddedRuns.states)) {
       if (!attachedRoutineKeys.has(key) && RRE.runningSession(routine)) {
         const warning = root.createDiv({ cls: "sb-card sb-error" });
@@ -411,15 +417,15 @@ try {
     const renderChoice = async e => {
       const card = selector.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
       const row = card.createEl("div", { cls: "sb-row" });
-      const requirement = SB.inheritedRequirement(e, registry), evidence = await taskEvidence(e.body);
-      addBodyLabel(row, e.body, evidence); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
-      if (evidence) {
+      const requirement = SB.inheritedRequirement(e, registry), evidences = await taskEvidences(e.body);
+      addBodyLabel(row, e.body, evidences); row.createEl("span", { text: e.role === "context" ? `${e.start}-${e.end || "…"}` : e.duration ? `${e.start} +${e.duration}m` : e.start, cls: "sb-muted" });
+      for (const evidence of evidences) {
         const result = SB.classify(evidence.source, requirement, registry);
         if (SB.shouldShowClassification(result.state, rawRegistry.settings?.["warning-level"]))
           row.createEl("span", { text: `${result.state}: ${evidence.label}`, cls: result.state === "conflict" ? "sb-error" : "sb-muted" });
         if (evidence.blockId) {
-          const affected = state.mainChain.findIndex(a => SB.taskBlockId(a.body) === evidence.blockId);
-          const descendantBlocked = affected >= 0 && state.mainChain.slice(affected + 1).some(a => SB.taskBlockId(a.body) !== evidence.blockId);
+          const affected = state.mainChain.findIndex(a => SB.taskBlockIds(a.body).includes(evidence.blockId));
+          const descendantBlocked = affected >= 0 && state.mainChain.slice(affected + 1).some(a => !SB.taskBlockIds(a.body).includes(evidence.blockId));
           row.appendChild(button("Done", () => completeTask(text, evidence), evidence.completed || evidence.lineIndex < 0 || descendantBlocked || evidence.hasIncompleteDescendants));
         }
       }
@@ -431,7 +437,7 @@ try {
       row.appendChild(button(e.role === "main" && state.mainChain.length ? "Switch here" : missed ? "Start late" : "Start", () => activate(e), blocked || activeLeafOrContext));
       const scheduledProgress = e.role === "context" && e.end ? SB.progressFor(e, null, new Date()) : null;
       if (scheduledProgress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${scheduledProgress.percent}%`; }
-      if (evidence?.isTask && evidence.lineIndex >= 0 && !active) await addEmbeddedRoutine(card, evidence, e.id);
+      if (!active) await addEmbeddedRoutine(card, evidences, e.id);
     };
     for (const e of selectable.filter(e => !isPast(e))) await renderChoice(e);
     const pastChoices = selectable.filter(isPast);
@@ -444,7 +450,7 @@ try {
       selector.createEl("h4", { text: "Ended blocks" });
       for (const e of endedBlocks) {
         const row = selector.createDiv({ cls: "sb-row" });
-        addBodyLabel(row, e.body, await taskEvidence(e.body));
+        addBodyLabel(row, e.body, await taskEvidences(e.body));
         row.appendChild(button("Restart", () => activate(e), e.role === "main" && switchBlocked(text, e)));
       }
     }

@@ -119,6 +119,28 @@
     };
   }
 
+  function multiRootModel(content, rootLines, defaultEstimateMs) {
+    const core = requireCore();
+    const parsed = core.parseRoutineText(content, defaultEstimateMs);
+    const roots = [...new Set(rootLines || [])].map(line => core.taskAtLine(parsed, line)).filter(Boolean);
+    if (!roots.length) return null;
+    if (roots.length === 1) return model(content, roots[0].line, roots[0].line, defaultEstimateMs);
+    const root = { id: "__linked_roots__", parentId: null, line: -1, raw: "", display: "Linked tasks", checkable: false, checked: false, selected: true, children: roots };
+    roots.forEach(task => { task.parentId = root.id; });
+    const all = core.flatten([root]), descendants = core.flatten(root.children);
+    return {
+      root, focus: root, path: [root], children: root.children,
+      leaves: all.filter(node => core.isRunnableLeaf(node) && !node.checked),
+      hasIncompleteDescendants: descendants.some(node => node.checkable !== false && !node.checked),
+      complete: all.filter(node => node.checkable !== false && node.checked).length,
+      total: all.filter(node => node.checkable !== false).length,
+    };
+  }
+
+  const sessionModel = options => options.rootLines?.length
+    ? multiRootModel(options.content, options.rootLines, options.defaultEstimateMs)
+    : model(options.content, options.rootLine, options.rootLine, options.defaultEstimateMs);
+
   function replacementForTask(rawLine, replacementFromTasksPlugin = null, status = null) {
     const core = requireCore();
     if (!rawLine?.match(core.TASK_LINE_RE)) throw new Error("Referenced line is no longer a task");
@@ -758,6 +780,12 @@
     const all = core.flatten([current.root]), map = new Map(all.map(node => [node.id, node]));
     return all.find(node => core.taskPath(node, map).map(part => part.display).join("\u0000") === key)?.line ?? null;
   }
+  function lineForKeys(content, rootLines, key, defaultEstimateMs) {
+    const core = requireCore(), current = multiRootModel(content, rootLines, defaultEstimateMs);
+    if (!current) return null;
+    const all = core.flatten([current.root]), map = new Map(all.map(node => [node.id, node]));
+    return all.find(node => core.taskPath(node, map).map(part => part.display).join("\u0000") === key)?.line ?? null;
+  }
 
   async function configuredTaskStatuses(app) {
     const defaults = [{ symbol: " ", name: "Todo", type: "TODO" }, { symbol: "x", name: "Done", type: "DONE" }];
@@ -921,7 +949,7 @@
   function renderRunner(container, options) {
     const core = requireCore();
     const state = options.state || createRunState();
-    const current = model(options.content, options.rootLine, options.rootLine, options.defaultEstimateMs);
+    const current = sessionModel(options);
     container.empty?.();
     if (!current) {
       container.createDiv({ cls: "rr-embedded-error", text: "Referenced task no longer exists." });
@@ -1086,7 +1114,7 @@
   function renderSession(container, options) {
     const core = requireCore();
     const state = options.state || createRunState();
-    const current = model(options.content, options.rootLine, options.rootLine, options.defaultEstimateMs);
+    const current = sessionModel(options);
     const notify = () => options.onStateChange?.(state);
     if (!current) {
       container.empty?.();
@@ -1222,10 +1250,10 @@
     return renderRunner(container, options);
   }
 
-  return { model, replacementForTask, localLifecycleParts, stampLifecycleTime, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
+  return { model, multiRootModel, replacementForTask, localLifecycleParts, stampLifecycleTime, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
     crossedPlannedDuration, primeDurationSound, playDurationSound,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,
-    lineForKey, rewindTitle, confirmRewind, renderRunner, renderSession };
+    lineForKey, lineForKeys, rewindTitle, confirmRewind, renderRunner, renderSession };
 });

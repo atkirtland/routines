@@ -368,21 +368,27 @@
     else lines.splice(insert, 0, line);
     return lines.join("\n").replace(/\s*$/, "") + "\n";
   }
-  function taskLink(body) {
-    const match = String(body || "").match(/\[\[([^#\]|]*)#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/u);
-    return match ? { path: match[1].trim(), blockId: match[2] } : null;
+  function taskLinks(body) {
+    const links = [];
+    const pattern = /\[\[([^#\]|]*)#\^([\p{L}\p{N}_-]+)(?:\|[^\]]+)?\]\]/gu;
+    for (const match of String(body || "").matchAll(pattern))
+      links.push({ path: match[1].trim(), blockId: match[2] });
+    return links;
   }
+  function taskLink(body) { return taskLinks(body)[0] || null; }
+  function taskBlockIds(body) { return taskLinks(body).map(link => link.blockId); }
   function taskBlockId(body) { return taskLink(body)?.blockId || null; }
   function doneTaskActuals(text, canonicalId, now = new Date()) {
     let result = String(text), state = actualState(result);
-    const affectedMain = state.mainChain.map((entry, index) => ({ entry, index })).filter(x => taskBlockId(x.entry.body) === canonicalId);
-    if (affectedMain.some(x => state.mainChain.slice(x.index + 1).some(child => taskBlockId(child.body) !== canonicalId)))
+    const hasTask = entry => taskBlockIds(entry.body).includes(canonicalId);
+    const affectedMain = state.mainChain.map((entry, index) => ({ entry, index })).filter(x => hasTask(x.entry));
+    if (affectedMain.some(x => state.mainChain.slice(x.index + 1).some(child => !hasTask(child))))
       throw new Error("Done is unavailable while an affected task block has an active descendant");
-    for (const context of state.contexts.filter(x => taskBlockId(x.body) === canonicalId)) {
+    for (const context of state.contexts.filter(hasTask)) {
       result = endBlock(result, context, now);
       state = actualState(result);
     }
-    while (state.mainLeaf && taskBlockId(state.mainLeaf.body) === canonicalId) {
+    while (state.mainLeaf && hasTask(state.mainLeaf)) {
       result = endBlock(result, state.mainLeaf, now);
       state = actualState(result);
     }
@@ -526,6 +532,6 @@
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
   return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
-    actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, taskLink, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
+    actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, taskLinks, taskLink, taskBlockIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });

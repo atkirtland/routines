@@ -187,6 +187,11 @@ assert.equal(E.replacementForTask("- [ ] Child", "- [x] Child ✅ 2026-09-27"), 
 assert.deepEqual(E.createRunState(), { focusKey: null, activeLeafKey: null, retired: [], sessions: {}, completedCount: 0, processedCount: 0, runTree: [], initialRunTree: [], actionHistory: [] });
 assert.equal(E.lineForKey(`intro\n- [ ] Morning routine ^morning-routine\n  - [ ] Make bed\n  - [ ] Breakfast\n`, 1, "Morning routine\u0000Breakfast"), 3);
 assert.equal(E.lineForKey(`new line\nintro\n- [ ] Morning routine ^morning-routine\n  - [ ] Make bed\n  - [ ] Breakfast\n`, 2, "Morning routine\u0000Breakfast"), 4);
+const linkedModel = E.multiRootModel(`- [ ] Morning ^morning\n  - [ ] Make bed\n- [ ] Zaoming ^zaoming\n  - [ ] Drink water\n`, [0, 2]);
+assert.equal(linkedModel.root.display, "Linked tasks");
+assert.deepEqual(linkedModel.root.children.map(task => task.display), ["Morning", "Zaoming"]);
+assert.deepEqual(linkedModel.leaves.map(task => task.display), ["Make bed", "Drink water"]);
+assert.equal(E.lineForKeys(`- [ ] Morning ^morning\n  - [ ] Make bed\n- [ ] Zaoming ^zaoming\n  - [ ] Drink water\n`, [0, 2], "Linked tasks\u0000Zaoming\u0000Drink water"), 3);
 
 console.log("routine-runner: all tests passed");
 
