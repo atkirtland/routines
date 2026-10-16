@@ -159,7 +159,7 @@ try {
       writeEmbeddedState(embeddedStateSnapshot());
     }, 250);
   };
-  const addEmbeddedRoutine = async (card, evidences, sessionKey) => {
+  const addEmbeddedRoutine = async (card, evidences, sessionKey, taskBlockStarted) => {
     evidences = evidences.filter(evidence => evidence?.isTask && evidence.lineIndex >= 0);
     if (!evidences.length) return;
     const evidence = evidences[0];
@@ -225,6 +225,8 @@ try {
       onEditError: error => new Notice(`Task tree was not changed: ${error.message}`, 8000),
       onRefresh: () => enqueueEmbedded(render).catch(error => new Notice(`Schedule runner refresh failed: ${error.message}`)),
       selectionCollapsible: true,
+      canStart: taskBlockStarted,
+      startBlockedReason: "Start this time block before starting its tasks.",
       renderSelectionActions: header => RRE.renderPurgeCacheButton(header, purgeOptions),
       summaryActionLabel: "Back to task selection",
       onSummaryAction: () => {
@@ -369,7 +371,7 @@ try {
         if (routineRunning) card.createDiv({ cls: "sb-muted", text: "Pause the routine timer before switching or ending this scheduled block." });
         const progress = planned && SB.progressFor(planned, e, new Date());
         if (progress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${progress.percent}%`; if (progress.overrun) card.createDiv({ text: `Overrun ${progress.overrun}m`, cls: "sb-error" }); }
-        await addEmbeddedRoutine(card, evidences, routineKey);
+        await addEmbeddedRoutine(card, evidences, routineKey, true);
       }
     }
     for (const [key, routine] of Object.entries(embeddedRuns.states)) {
@@ -437,7 +439,7 @@ try {
       row.appendChild(button(e.role === "main" && state.mainChain.length ? "Switch here" : missed ? "Start late" : "Start", () => activate(e), blocked || activeLeafOrContext));
       const scheduledProgress = e.role === "context" && e.end ? SB.progressFor(e, null, new Date()) : null;
       if (scheduledProgress) { const bar = card.createDiv({ cls: "sb-progress" }); const fill = bar.createEl("i"); fill.style.width = `${scheduledProgress.percent}%`; }
-      if (!active) await addEmbeddedRoutine(card, evidences, e.id);
+      if (!active) await addEmbeddedRoutine(card, evidences, e.id, false);
     };
     for (const e of selectable.filter(e => !isPast(e))) await renderChoice(e);
     const pastChoices = selectable.filter(isPast);

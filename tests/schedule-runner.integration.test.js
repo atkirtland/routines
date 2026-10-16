@@ -67,6 +67,8 @@ assert.match(scheduleUi, /file \|\| app\.vault\.getAbstractFileByPath\(dailyPath
 assert.doesNotMatch(scheduleUi, /text: "Begin tasks"/, "Scheduled tasks must show selection without an intermediate launcher");
 assert.match(scheduleUi, /screen: "select"/, "A new scheduled task session must open on the shared selection screen");
 assert.match(scheduleUi, /selectionCollapsible: true/, "Scheduled task selection must opt into the collapsible task tree");
+assert.match(scheduleUi, /canStart: taskBlockStarted/, "Scheduled tasks must remain disabled until their time block starts");
+assert.match(sharedRoutineUi, /options\.canStart === false/, "The shared task launcher must honor a host start guard");
 assert.match(sharedRoutineUi, /Show task tree/, "The shared selector must offer a task-tree visibility toggle");
 assert.match(sharedRoutineUi, /selectionTree\.hidden = !state\.selectionTreeOpen/, "Scheduled task trees must be hidden by default");
 assert.match(sharedRoutineUi, /renderSelectionActions\?\.\(header\)/, "Selection hosts must be able to add inline routine actions");

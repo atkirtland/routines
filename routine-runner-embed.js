@@ -1164,7 +1164,9 @@
       const header = container.createDiv({ cls: "rr-selection-header" });
       const selectedCount = state.selected.length;
       const start = header.createEl("button", { cls: "rr-btn rr-btn-primary", text: selectedCount ? `Start routine (${selectedCount} leaf task${selectedCount === 1 ? "" : "s"})` : "Select at least one leaf task" });
-      start.disabled = !selectedCount;
+      const startBlocked = options.canStart === false;
+      start.disabled = !selectedCount || startBlocked;
+      if (startBlocked && options.startBlockedReason) start.title = options.startBlockedReason;
       const selectionTree = container.createDiv({ cls: "rr-selection-tree" });
       if (options.selectionCollapsible) {
         state.selectionTreeOpen = state.selectionTreeOpen === true;
@@ -1181,6 +1183,7 @@
       }
       options.renderSelectionActions?.(header);
       start.addEventListener("click", () => {
+        if (options.canStart === false) return;
         primeDurationSound();
         syncSelection();
         const selectedKeys = new Set(state.selected);
