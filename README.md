@@ -39,6 +39,18 @@ and task identity.
 
 The runner enforces one active main ancestor-to-leaf chain. **Switch block** reveals the same inline **Select time block** view used for starting work—there is no separate popup. It contains planned blocks, active ancestors, ended planned blocks with Restart controls, and an inline description field for unplanned work. **Start new block** replaces the main chain; **Start new context** starts overlapping activity without ending main work. Opening or cancelling selection leaves the current block running. Choosing a replacement appends its start to Actual; this implicitly ends the replaced interval without a boundary or pause marker. Starting a child preserves its ancestors; switching to a sibling preserves their shared ancestors; returning to an ancestor starts a new occurrence of that ancestor. Restarts preserve the Plan ID's routine session. Pause any affected routine timers before switching away. Contexts remain independent and use End to fill in their inline end time. Nothing auto-starts, auto-ends, auto-switches, or completes a task merely because time elapsed; task completion requires Done. Existing boundaries and legacy pause markers remain readable.
 
+When plans change mid-day, add a `###` subheading inside `## Plan` and write the new plan beneath it. If Plan has no `###` subheadings, its entries are the plan; otherwise only the entries under the last `###` subheading are offered for selection or restart. Earlier entries (including any above the first subheading) are kept as history and still resolve their Actual records. Nesting does not cross a subheading. A revision may reuse a block ID from an earlier revision (IDs must still be unique within one revision); the replanned entry then continues that block's Actual occurrences and routine session, and lookups prefer the current revision's entry.
+
+```md
+## Plan
+- 0900 w ^p-aaa
+- 1300 p ^p-bbb
+
+### Replan 1210 — working from home
+- 1230 p "pharmacy" ^p-eee
+- 1400 w "async review" ^p-fff
+```
+
 Every Plan line and generated boundary has a native Obsidian block ID. On render, missing Plan IDs receive random ASCII-only IDs in one guarded write; existing IDs are preserved, generated collisions are avoided, and duplicate existing IDs are reported rather than guessed at. Actual IDs are `a-<random-plan-token>-<occurrence>`. The runner can also create running, unplanned contexts with standalone random ASCII IDs.
 
 Existing or manually entered Actual lines without IDs are repaired on render as well. This keeps state reconstruction safe and prevents generated boundary IDs such as `^null-end`.

@@ -321,7 +321,8 @@ try {
     const planSlug = e => e.id?.replace(/^p-/, "");
     const isActive = e => [...state.mainChain, ...state.contexts].some(a => actualPlanSlug(a) === planSlug(e));
     const hasOccurred = e => state.section.entries.some(a => actualPlanSlug(a) === planSlug(e));
-    const routineKeyFor = e => plan.entries.find(p => planSlug(p) === actualPlanSlug(e))?.id || e.id;
+    const plannedFor = (actual, predicate) => { const slug = actualPlanSlug(actual); return slug ? SB.planEntry(plan, `p-${slug}`, predicate) : null; };
+    const routineKeyFor = e => plannedFor(e)?.id || e.id;
     const runningForRoutineKey = key => Object.entries(embeddedRuns.states)
       .some(([sessionKey, session]) => (sessionKey === key || sessionKey.startsWith(`${key}::`)) && RRE.runningSession(session));
     const switchBlocked = (source, target) => SB.actualState(source).mainChain.slice(SB.switchDepth(source, target))
@@ -331,7 +332,7 @@ try {
       try {
         if (dailyPath !== renderedPath || file?.path !== renderedPath) throw new Error("The selected daily note changed");
         const current = await app.vault.read(file);
-        const fresh = SB.parseSection(current, "Plan").entries.find(e => e.id === target.id);
+        const fresh = SB.planEntry(SB.parseSection(current, "Plan"), target.id);
         if (!fresh) throw new Error("This planned block no longer exists. Refresh the runner.");
         if (fresh.role === "main" && switchBlocked(current, fresh)) throw new Error("Pause the routine timer before switching this scheduled block.");
         if (fresh.role === "context" && SB.actualState(current).contexts.some(e => actualPlanSlug(e) === planSlug(fresh))) throw new Error("This context is already active");
@@ -355,7 +356,7 @@ try {
         const row = card.createEl("div", { cls: "sb-row" }); addBodyLabel(row, e.body, evidences);
         const time = row.createEl("button", { text: e.role === "context" ? `${e.start}-` : e.start }); time.onclick = () => editTime(text, e);
         if (e.role === "context" && e.end) { const end = row.createEl("button", { text: e.end }); end.onclick = () => editTime(text, e, "end"); }
-        const pid = actualPlanSlug(e), planned = plan.entries.find(p => p.id && p.id.replace(/^p-/, "") === pid);
+        const planned = plannedFor(e);
         const routineKey = planned?.id || e.id;
         attachedRoutineKeys.add(routineKey);
         const routineRunning = RRE.runningSession(embeddedRuns.states[routineKey]);
@@ -392,7 +393,7 @@ try {
       root.createEl("h3", { text: "Recent contexts" });
       for (const e of endedContexts) {
         const row = root.createEl("div", { cls: "sb-row sb-muted" }); row.createEl("span", { text: e.body });
-        const slug = actualPlanSlug(e), planned = plan.entries.find(p => p.role === "context" && p.id?.replace(/^p-/, "") === slug);
+        const planned = plannedFor(e, p => p.role === "context");
         if (planned?.end) {
           const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(2));
           const late = minutes(e.end) - minutes(planned.end);
@@ -413,8 +414,9 @@ try {
     selector.appendChild(button("Cancel", () => { blockSelectorOpen = false; selector.hidden = true; }));
     selector.createEl("h4", { text: "Upcoming / active blocks" });
     if (plan.start < 0) selector.createEl("div", { text: "Add a ## Plan section to the selected note.", cls: "sb-muted" });
+    if (plan.revision) selector.createEl("div", { text: `Using plan revision: ${plan.revision.heading}`, cls: "sb-muted" });
     const nowHHMM = SB.hhmm(new Date());
-    const selectable = plan.entries.filter(x => x.role !== "boundary" && (!hasOccurred(x) || isActive(x)));
+    const selectable = plan.entries.filter(x => x.role !== "boundary" && !x.superseded && (!hasOccurred(x) || isActive(x)));
     const isPast = e => !isActive(e) && e.start < nowHHMM;
     const renderChoice = async e => {
       const card = selector.createEl("div", { cls: "sb-card sb-indent" }); card.style.setProperty("--depth", e.indent / 2);
@@ -447,7 +449,7 @@ try {
       selector.createEl("h4", { text: "Earlier blocks" });
       for (const e of pastChoices) await renderChoice(e);
     }
-    const endedBlocks = plan.entries.filter(e => e.role !== "boundary" && hasOccurred(e) && !isActive(e));
+    const endedBlocks = plan.entries.filter(e => e.role !== "boundary" && !e.superseded && hasOccurred(e) && !isActive(e));
     if (endedBlocks.length) {
       selector.createEl("h4", { text: "Ended blocks" });
       for (const e of endedBlocks) {

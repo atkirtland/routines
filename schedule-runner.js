@@ -233,9 +233,13 @@
   function parseSection(text, name) {
     const lines = String(text).split(/\r?\n/), start = heading(lines, name);
     if (start < 0) return { lines, start: -1, end: -1, entries: [] };
-    const end = sectionEnd(lines, start), entries = [], stack = [];
+    const end = sectionEnd(lines, start), entries = [], revisions = [];
+    let stack = [];
     for (let i = start + 1; i < end; i++) {
       let m, role;
+      // A ### subheading starts a revision (e.g. a mid-day replan); only the
+      // last one is current, but earlier entries still resolve Actual links.
+      if ((m = lines[i].match(/^###\s+(.*?)\s*$/))) { revisions.push({ line: i, heading: m[1] }); stack = []; continue; }
       if ((m = lines[i].match(BOUNDARY_RE))) role = "boundary";
       else if ((m = lines[i].match(CONTEXT_RE))) role = "context";
       else if ((m = lines[i].match(MAIN_RE))) role = "main";
@@ -248,9 +252,18 @@
         : role === "context"
           ? { role, line: i, indent, start: m[2], end: m[3] || null, body: m[4], id: m[5] || null, parent }
           : { role, line: i, indent, start: m[2], duration: m[3] ? Number(m[3]) * (m[4] === "h" ? 60 : 1) : null, body: m[5], id: m[6] || null, parent };
+      entry.revision = revisions.length - 1;
       entries.push(entry); if (role === "main") stack.push({ indent, entry });
     }
-    return { lines, start, end, entries };
+    const current = revisions.length - 1;
+    for (const entry of entries) entry.superseded = entry.revision !== current;
+    return { lines, start, end, entries, revisions, revision: revisions[current] || null };
+  }
+  // Resolve a Plan ID that may be repeated across revisions: the current
+  // revision wins, otherwise the most recent revision that used it.
+  function planEntry(section, id, predicate = () => true) {
+    const matches = (section?.entries || []).filter(entry => entry.id && entry.id === id && predicate(entry));
+    return matches.find(entry => !entry.superseded) || matches.at(-1) || null;
   }
   function allBlockIds(text) {
     const ids = [], re = /(?:^|\s)\^([\p{L}\p{N}_-]+)\s*$/u;
@@ -284,8 +297,13 @@
     if (section.start < 0) return { text: String(text), changed: false, assigned: [], errors: [] };
     const ids = allBlockIds(text), errors = [];
     const counts = new Map();
-    for (const entry of section.entries) if (entry.id) counts.set(entry.id, (counts.get(entry.id) || 0) + 1);
-    for (const [id, count] of counts) if (count > 1) errors.push(`Duplicate block ID '^${id}'`);
+    // A revision may reuse an earlier revision's ID so a replanned block keeps
+    // its Actual occurrences and routine session; IDs stay unique per revision.
+    for (const entry of section.entries) if (entry.id) {
+      const key = `${entry.revision}\u0000${entry.id}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    for (const [key, count] of counts) if (count > 1) errors.push(`Duplicate block ID '^${key.split("\u0000")[1]}'`);
     if (errors.length) return { text: String(text), changed: false, assigned: [], errors };
     const used = new Set(ids.map(x => x.id)), lines = section.lines.slice(), assigned = [];
     for (const entry of section.entries) {
@@ -531,7 +549,7 @@
   }
   function resolveTaskClassification(taskText, pageProject) { return inlineClassifications(taskText) || pageProject || true; }
 
-  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
+  return { parseRegistryYaml, tokenize, parseExpression, validateRegistry, classify, formatExpression, shouldShowClassification, parseSection, planEntry, allBlockIds, randomBlockId, ensurePlanIds, ensureActualIds,
     actualState, actualIntervals, validateActualIntervals, startBlock, switchBlock, switchDepth, endBlock, completedPlanSlugs, taskLinks, taskLink, taskBlockIds, taskBlockId, doneTaskActuals, editActualTime, progressFor, scopeToken, inheritedRequirement,
     replaceIfUnchanged, inlineClassifications, resolveTaskClassification, hhmm, ensureActual, appendActual };
 });
