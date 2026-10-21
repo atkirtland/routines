@@ -694,7 +694,7 @@
       const checkbox = node.checkable === false ? null : checkboxCell.createEl("input", { attr: { type: "checkbox" } });
       if (checkbox) checkbox.checked = node.selected !== false;
       if (checkbox) checkbox.disabled = !ancestorsEnabled || locked(node);
-      checkbox?.addEventListener("change", () => { node.selected = checkbox.checked; redraw(); });
+      checkbox?.addEventListener("change", () => { core.setTaskSelected(node, checkbox.checked); redraw(); });
       const reorder = row.createDiv({ cls: "rr-reorder" });
       const rewindTitle = isProcessed ? options.rewindTitle?.(node, nodeKey) : null;
       if (rewindTitle) {
@@ -748,7 +748,7 @@
       else if (event.key === "G") next = rows.length - 1;
       else if (event.key === "g") { if (pendingG) next = 0; pendingG = !pendingG; event.preventDefault(); if (next !== current) { state.setupCursorId = rows[next].node.id; redraw(); } return; }
       else if (event.key === "/") { event.preventDefault(); container.querySelector(".rr-task-search")?.focus(); return; }
-      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item && item.node.checkable !== false && item.ancestorsEnabled && !locked(item.node)) item.node.selected = item.node.selected === false; }
+      else if ([" ", "x"].includes(event.key)) { const item = rows[current]; if (item && item.node.checkable !== false && item.ancestorsEnabled && !locked(item.node)) core.setTaskSelected(item.node, item.node.selected === false); }
       else if (event.key === "u") { const item = rows[current]; if (item && options.rewindTitle?.(item.node, keyOf(item.node))) { event.preventDefault(); options.onRewind(item.node, keyOf(item.node)); } return; }
       else if (event.key === "h") { const item = rows[current]; if (item?.node.children.length && !state.collapsedIds.includes(item.node.id)) state.collapsedIds.push(item.node.id); }
       else if (event.key === "l") state.collapsedIds = state.collapsedIds.filter(id => id !== rows[current]?.node.id);

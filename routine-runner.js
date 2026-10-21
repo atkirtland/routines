@@ -160,6 +160,12 @@
     const map = nodeMap(nodes);
     return flatten(nodes).filter(node => isRunnableLeaf(node) && effective(node, map));
   }
+  function setTaskSelected(node, selected) {
+    node.selected = selected;
+    // Re-enabling a branch should make it runnable as a whole. This matters
+    // after a bulk disable, which leaves every descendant explicitly off.
+    if (selected) flatten(node.children).forEach(child => { child.selected = true; });
+  }
   function hasCheckableDescendant(node) {
     return node.children.some(child => child.checkable !== false || hasCheckableDescendant(child));
   }
@@ -218,6 +224,6 @@
 
   return { DEFAULT_ESTIMATE_MS, TIME_GOAL_RE, COUNT_GOAL_RE, TASK_LINE_RE, LIST_LINE_RE, HEADING_RE,
     parseEstimateMs, parseGoalCount, taskCommentParts, taskDisplay, normalizeTaskKey, withTaskComment, insertBeforeTasksMetadata, formatDuration, parseRoutineText,
-    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, hasCheckableDescendant, isRunnableLeaf, enabledLeaves, taskBearingTree, selectedRoutineTree,
+    sectionLineRange, fuzzyScore, flatten, nodeMap, effective, setTaskSelected, hasCheckableDescendant, isRunnableLeaf, enabledLeaves, taskBearingTree, selectedRoutineTree,
     taskPath, taskAtLine, cloneTaskTree, referencedTaskTree, availableLeaves, readyParents, elapsedForSession };
 });

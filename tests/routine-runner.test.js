@@ -118,6 +118,10 @@ assert.deepEqual(R.enabledLeaves(roots).map(task => task.display), ["Child", "Fi
 parsed.tasks[0].selected = false;
 assert.deepEqual(R.enabledLeaves(roots).map(task => task.display), ["Other"]);
 assert.equal(R.selectedRoutineTree(roots).length, 1);
+R.flatten(roots).forEach(task => { task.selected = false; });
+R.setTaskSelected(parsed.tasks[0], true);
+assert.deepEqual(R.enabledLeaves(roots).map(task => task.display), ["Child", "Finished"]);
+assert.equal(parsed.tasks[3].selected, false, "enabling a parent does not affect sibling branches");
 assert(R.fuzzyScore("prnt", "Parent") >= 0);
 assert.equal(R.fuzzyScore("xyz", "Parent"), -1);
 assert.equal(R.elapsedForSession({ elapsedBeforeStartMs: 1000, startedAt: 5000 }, 8000), 4000);
