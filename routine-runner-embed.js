@@ -49,6 +49,40 @@
     } catch (_) { return false; }
   }
 
+  // Obsidian desktop runs this view in Electron's renderer, where the standard
+  // Web Notification constructor is the supported system-notification path.
+  // This is intentionally the same call that works in Obsidian's dev console:
+  // new Notification(title, { body }). Most mobile WebViews do not expose it.
+  function sendDesktopNotification(title, body) {
+    const WebNotification = globalThis.Notification;
+    const show = () => {
+      try {
+        const notification = new WebNotification(title, { body: body || "", silent: true });
+        // Construction can succeed before the OS reports a delivery failure.
+        notification.onerror = error => {
+          console.warn("Routine Runner: Notification failed", error);
+        };
+        return true;
+      }
+      catch (error) { console.warn("Routine Runner: Notification failed", error); return false; }
+    };
+    if (typeof WebNotification !== "function" || WebNotification.permission === "denied") return false;
+    if (WebNotification.permission === "granted") return show();
+    // Some Electron versions expose the constructor without a meaningful
+    // permission property. In that case, try the known-working constructor.
+    if (WebNotification.permission == null) return show();
+    Promise.resolve(WebNotification.requestPermission?.())
+      .then(permission => { if (permission === "granted") show(); })
+      .catch(error => console.warn("Routine Runner: notification permission failed", error));
+    return true;
+  }
+
+  function notifyDurationEnd(task) {
+    playDurationSound();
+    const core = requireCore();
+    sendDesktopNotification("Planned time reached", task ? `${task.display} (${core.formatDuration(task.estimateMs)})` : "");
+  }
+
   function crossedPlannedDuration(previousElapsed, elapsed, estimateMs) {
     return Number(estimateMs) > 0 && previousElapsed < estimateMs && elapsed >= estimateMs;
   }
@@ -539,6 +573,21 @@
     return leaves;
   }
 
+  // Display paths are readable and survive Tasks metadata changes, but the
+  // display alone is not an identity: routines commonly repeat labels such as
+  // "work" and "break". Disambiguate only same-named siblings so existing
+  // keys for uniquely named tasks remain compatible.
+  function taskKey(node, map) {
+    const core = requireCore();
+    return core.taskPath(node, map).map(part => {
+      const siblings = part.parentId ? (map.get(part.parentId)?.children || [])
+        : [...map.values()].filter(candidate => !candidate.parentId);
+      const matches = siblings.filter(candidate => candidate.display === part.display);
+      if (matches.length < 2) return part.display;
+      return `${part.display}\u001f${matches.findIndex(candidate => candidate.id === part.id) + 1}`;
+    }).join("\u0000");
+  }
+
   // Standalone supplies an open-task tree to the shared selector. Scheduled
   // roots need the same pruning before they reach that selector.
   function openSelectionTree(node) {
@@ -778,13 +827,13 @@
     const core = requireCore(), current = model(content, rootLine, rootLine, defaultEstimateMs);
     if (!current) return null;
     const all = core.flatten([current.root]), map = new Map(all.map(node => [node.id, node]));
-    return all.find(node => core.taskPath(node, map).map(part => part.display).join("\u0000") === key)?.line ?? null;
+    return all.find(node => taskKey(node, map) === key)?.line ?? null;
   }
   function lineForKeys(content, rootLines, key, defaultEstimateMs) {
     const core = requireCore(), current = multiRootModel(content, rootLines, defaultEstimateMs);
     if (!current) return null;
     const all = core.flatten([current.root]), map = new Map(all.map(node => [node.id, node]));
-    return all.find(node => core.taskPath(node, map).map(part => part.display).join("\u0000") === key)?.line ?? null;
+    return all.find(node => taskKey(node, map) === key)?.line ?? null;
   }
 
   async function configuredTaskStatuses(app) {
@@ -907,7 +956,7 @@
       const elapsed = core.elapsedForSession(session);
       const remaining = task.estimateMs - elapsed;
       if (crossedPlannedDuration(previousElapsed, elapsed, task.estimateMs)) {
-        (options.onDurationEnd || playDurationSound)();
+        (options.onDurationEnd || notifyDurationEnd)(task);
       }
       previousElapsed = elapsed;
       timer.textContent = core.formatDuration(options.countDown === false ? elapsed : remaining);
@@ -958,21 +1007,21 @@
     const runRoots = state.runTree?.length ? state.runTree : [current.root];
     const all = core.flatten(runRoots);
     const map = new Map(all.map(node => [node.id, node]));
-    const keyOf = node => node._runKey || core.taskPath(node, map).map(part => part.display).join("\u0000");
+    const keyOf = node => node._runKey || taskKey(node, map);
     const byKey = new Map(all.map(node => [keyOf(node), node]));
     const retired = new Set(state.retired || []);
     // The note is authoritative for completion: a task checked there (in an
     // earlier run, by hand, or by Done before a reload) counts as processed.
     const fileAll = core.flatten([current.root]);
     const fileMap = new Map(fileAll.map(node => [node.id, node]));
-    const checkedInFile = new Set(fileAll.filter(node => node.checked).map(node => core.taskPath(node, fileMap).map(part => part.display).join("\u0000")));
+    const checkedInFile = new Set(fileAll.filter(node => node.checked).map(node => taskKey(node, fileMap)));
     const isDone = node => node.checked || retired.has(keyOf(node)) || checkedInFile.has(keyOf(node));
     const orderIndex = new Map((state.order || []).map((key, index) => [key, index]));
     const leaves = all.filter(node => core.isRunnableLeaf(node) && !isDone(node))
       .sort((a, b) => (orderIndex.get(keyOf(a)) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(keyOf(b)) ?? Number.MAX_SAFE_INTEGER));
     const readyParents = core.readyParents(fileAll.filter(node => !node.parentId), node => node.checked,
-      node => byKey.has(core.taskPath(node, fileMap).map(part => part.display).join("\u0000")))
-      .map(node => byKey.get(core.taskPath(node, fileMap).map(part => part.display).join("\u0000")))
+      node => byKey.has(taskKey(node, fileMap)))
+      .map(node => byKey.get(taskKey(node, fileMap)))
       .filter(node => node && !retired.has(keyOf(node)));
     let activeLeaf = byKey.get(state.activeLeafKey);
     const activeIsReadyParent = activeLeaf?.children.length && readyParents.includes(activeLeaf);
@@ -1123,7 +1172,7 @@
     }
     const all = core.flatten([current.root]);
     const map = new Map(all.map(node => [node.id, node]));
-    const keyOf = node => core.taskPath(node, map).map(part => part.display).join("\u0000");
+    const keyOf = node => taskKey(node, map);
     const leaves = all.filter(node => core.isRunnableLeaf(node) && !node.checked);
     const validKeys = new Set(leaves.map(keyOf));
     state.source = options.sourcePath || state.source;
@@ -1254,7 +1303,7 @@
   }
 
   return { model, multiRootModel, replacementForTask, localLifecycleParts, stampLifecycleTime, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
-    crossedPlannedDuration, primeDurationSound, playDurationSound,
+    crossedPlannedDuration, primeDurationSound, playDurationSound, sendDesktopNotification, notifyDurationEnd,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,

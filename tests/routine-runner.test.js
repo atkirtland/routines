@@ -196,6 +196,7 @@ assert.equal(linkedModel.root.display, "Linked tasks");
 assert.deepEqual(linkedModel.root.children.map(task => task.display), ["Morning", "Zaoming"]);
 assert.deepEqual(linkedModel.leaves.map(task => task.display), ["Make bed", "Drink water"]);
 assert.equal(E.lineForKeys(`- [ ] Morning ^morning\n  - [ ] Make bed\n- [ ] Zaoming ^zaoming\n  - [ ] Drink water\n`, [0, 2], "Linked tasks\u0000Zaoming\u0000Drink water"), 3);
+assert.equal(E.lineForKey(`- [ ] Pom ^pom\n  - [x] w\n  - [x] break\n  - [ ] w\n  - [ ] break\n`, 0, "Pom\u0000w\u001f2"), 3, "duplicate sibling labels have distinct run keys");
 
 console.log("routine-runner: all tests passed");
 
@@ -315,16 +316,25 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
     onComment: async (node, value) => { savedTask = node; savedComment = value; },
   });
   const alertSession = { startedAt: null, elapsedBeforeStartMs: 9999 };
-  let alerts = 0;
+  let alerts = 0, alertedTask = null;
   const alertView = E.renderRunCard(new Element(), {
     task: { ...task, estimateMs: 10000 }, path: [task], session: alertSession,
-    onDurationEnd: () => { alerts++; },
+    onDurationEnd: node => { alerts++; alertedTask = node; },
   });
   try {
     alertSession.elapsedBeforeStartMs = 10000;
     alertView.repaint();
     alertView.repaint();
     assert.equal(alerts, 1, "planned-duration sound fires once at the boundary");
+    assert.equal(alertedTask.display, task.display, "the duration alert receives the task");
+    assert.equal(E.sendDesktopNotification("Planned time reached", "Child (0:10)"), false, "no Notification API is a silent no-op");
+    const shown = [];
+    global.Notification = class { constructor(title, options) { shown.push([title, options.body]); } };
+    global.Notification.permission = "granted";
+    try {
+      assert.equal(E.sendDesktopNotification("Planned time reached", "Child (0:10)"), true);
+      assert.deepEqual(shown, [["Planned time reached", "Child (0:10)"]], "Electron's Notification is preferred");
+    } finally { delete global.Notification; }
     const elements = node => [node, ...node.children.flatMap(elements)];
     assert(!elements(container).some(node => node.cls === "rr-task-queue"), "run card should not render the removed breadcrumb queue");
     assert(!elements(container).some(node => node.tag === "input"));
@@ -350,6 +360,29 @@ assert.equal(R.parseRoutineText(commented).tasks[0].comment, "Remembered a fores
     assert.equal(savedTask, parent);
     doc.events.keydown({ key: "Escape", preventDefault() {} });
     assert(parentMenu.removed);
+
+    // A completed sibling must not complete later siblings with the same label.
+    const repeatedContent = `- [ ] pom1 ^pom1
+\t- [x] w ⏱️ 25:00
+\t- [x] break ⏱️ 5:00
+\t- [ ] w ⏱️ 25:00
+\t- [ ] break ⏱️ 5:00
+\t- [ ] w ⏱️ 25:00
+\t- [ ] break ⏱️ 5:00
+\t- [ ] w ⏱️ 25:00
+\t- [ ] break ⏱️ 5:00`;
+    const repeatedState = E.createRunState(); repeatedState.screen = "select";
+    const repeatedBox = new Element();
+    let repeatedView;
+    const repeatedOptions = { content: repeatedContent, rootLine: 0, state: repeatedState,
+      onRefresh: () => { repeatedView?.dispose(); repeatedView = E.renderSession(repeatedBox, repeatedOptions); } };
+    repeatedOptions.onRefresh();
+    const startRepeated = elements(repeatedBox).find(node => node.text === "Start routine (6 leaf tasks)");
+    assert(startRepeated, "the six unfinished repeated-label tasks are selectable");
+    startRepeated.events.click();
+    assert(!elements(repeatedBox).some(node => node.text === "Routine complete 🎉"));
+    assert.equal(repeatedState.activeLeafKey, "pom1\u0000w\u001f2");
+    repeatedView.dispose();
 
     // Run tree: tasks checked in the note and skipped tasks are greyed, and
     // only actions from this run offer Undo.

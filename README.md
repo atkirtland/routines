@@ -104,7 +104,10 @@ When an active scheduled block targets a parent checkbox, its card embeds the Ro
 Both runners play a short two-tone chime once when an active task's elapsed time
 reaches its planned duration (`⏱️`). Paused task and runner time does not advance
 the alert. A task that is already overdue when its card is opened does not replay
-the chime.
+the chime. The chime is accompanied by a system notification naming the task,
+sent through Electron's web Notification API. Failures are logged to the
+developer console. Most Android WebViews do not support this API, so mobile
+plays only the chime.
 
 After every direct child of an unfinished task has a non-blank checkbox status
 (for example `[x]`, `[-]`, or `[/]`), both runners pause normal advancement and
