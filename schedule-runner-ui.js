@@ -3,7 +3,6 @@
 const DIR = dv.current().file.folder;
 const CORE_PATH = `${DIR}/schedule-runner.js`;
 const UNDO_KEY = "__scheduledBlocksUndo";
-const STATE_PATH = `${DIR}/schedule-runner-state.yaml`;
 
 try {
   // The core is a UMD module. Evaluating it only installs one namespaced object.
@@ -13,6 +12,7 @@ try {
   (0, eval)(await app.vault.adapter.read(`${DIR}/routine-runner-embed.js`));
   const RR = globalThis.RoutineRunner;
   const RRE = globalThis.RoutineRunnerEmbed;
+  const STATE_PATH = RRE.cachePath(config.cacheDir, DIR, "schedule-runner-state.yaml");
   RRE.installStyles(document);
   const rawRegistry = config.registry;
   const registry = SB.validateRegistry(rawRegistry);
@@ -140,7 +140,11 @@ try {
   const writeEmbeddedState = snapshot => {
     const write = enqueueEmbedded(async () => {
       const stateFile = app.vault.getAbstractFileByPath(STATE_PATH);
-      if (stateFile) await app.vault.modify(stateFile, snapshot); else await app.vault.create(STATE_PATH, snapshot);
+      if (stateFile) await app.vault.modify(stateFile, snapshot);
+      else {
+        await RRE.ensureCacheFolder(app, STATE_PATH);
+        await app.vault.create(STATE_PATH, snapshot);
+      }
     });
     embeddedCoordinator.actionTail = write.catch(error => new Notice(`Schedule runner state was not saved: ${error.message}`));
     return embeddedCoordinator.actionTail;

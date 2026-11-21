@@ -6,6 +6,29 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (RR) {
   "use strict";
 
+  function cachePath(cacheDir, runnerDir, filename) {
+    const directory = cacheDir ?? [runnerDir, "cache"].filter(Boolean).join("/");
+    if (typeof directory !== "string") throw new Error("cacheDir must be a vault-relative folder path");
+    const parts = directory.replace(/\\/g, "/").split("/").filter(part => part && part !== ".");
+    if (parts.includes("..") || /^[A-Za-z]:/.test(directory)) {
+      throw new Error("cacheDir must stay inside the vault");
+    }
+    return [...parts, filename].join("/");
+  }
+
+  async function ensureCacheFolder(app, path) {
+    const parts = path.split("/").slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      const folder = parts.slice(0, i).join("/");
+      if (app.vault.getAbstractFileByPath(folder)) continue;
+      try { await app.vault.createFolder(folder); }
+      catch (error) {
+        // The other runner or vault sync may have created it concurrently.
+        if (!app.vault.getAbstractFileByPath(folder)) throw error;
+      }
+    }
+  }
+
   function requireCore() {
     if (!RR) throw new Error("RoutineRunner core must be loaded before routine-runner-embed.js");
     return RR;
@@ -1303,7 +1326,7 @@
   }
 
   return { model, multiRootModel, replacementForTask, localLifecycleParts, stampLifecycleTime, completeTaskTransaction, completeTask, undoReplacements, undoCompletionTransactions, saveTaskComment, moveTask, addTaskAfter, updateTaskEstimate, checkTask, deleteTask, durationPicker, configuredTaskStatuses, showStatusMenu, renderBreadcrumbs,
-    crossedPlannedDuration, primeDurationSound, playDurationSound, sendDesktopNotification, notifyDurationEnd,
+    cachePath, ensureCacheFolder, crossedPlannedDuration, primeDurationSound, playDurationSound, sendDesktopNotification, notifyDurationEnd,
     setRunnerMode, runnerTotals, subtreeElapsedTotal, toggleRunnerPause,
     createRunState, serializeSession, deserializeSession, sessionElapsedTotal, runningSession, enabledLeaves, openSelectionTree,
     renderSelection, renderRunCard, renderSummary, renderPurgeCacheButton, installStyles,

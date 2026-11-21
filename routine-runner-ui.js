@@ -59,7 +59,7 @@ const CACHE_VERSION = 1;
 const CACHE_NAME = "routine-runner-state.yaml";
 const runnerPath = dv.current().file.path;
 const runnerDir = runnerPath.includes("/") ? runnerPath.slice(0, runnerPath.lastIndexOf("/")) : "";
-const CACHE_PATH = runnerDir ? `${runnerDir}/${CACHE_NAME}` : CACHE_NAME;
+const CACHE_PATH = RRE.cachePath(config.cacheDir, runnerDir, CACHE_NAME);
 
 const defaultState = {
   version: STATE_VERSION,
@@ -267,7 +267,10 @@ function queueSave() {
     if (existing) {
       const current = await app.vault.read(existing);
       if (current !== snapshot) await app.vault.modify(existing, snapshot);
-    } else await app.vault.create(CACHE_PATH, snapshot);
+    } else {
+      await RRE.ensureCacheFolder(app, CACHE_PATH);
+      await app.vault.create(CACHE_PATH, snapshot);
+    }
     coordinator.latestWrittenCacheText = snapshot;
     coordinator.initialized = true;
     state.cacheError = null;

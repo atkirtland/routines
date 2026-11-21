@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
+const E = require("../routine-runner-embed.js");
 
 // Exercise the adapter's date control and disk rehydration without Obsidian.
 class Element {
@@ -16,6 +17,7 @@ class Element {
 const find = (node, predicate) => predicate(node) ? node : node.children.map(x => find(x, predicate)).find(Boolean);
 const source = fs.readFileSync(path.join(__dirname, "../schedule-runner-ui.js"), "utf8");
 const files = new Map();
+const folders = new Set(["Runner"]);
 let today = "2026-09-27";
 const moment = Object.assign(function (value = today) {
   return {
@@ -26,19 +28,23 @@ const moment = Object.assign(function (value = today) {
 const app = {
   internalPlugins: { plugins: { "daily-notes": { instance: { options: { folder: "Daily", format: "YYYY/MM/DD" } } } } },
   vault: {
-    getAbstractFileByPath: path => files.has(path) ? { path } : null,
+    getAbstractFileByPath: path => files.has(path) || folders.has(path) ? { path } : null,
+    createFolder: async path => { folders.add(path); },
     read: async file => files.get(file.path),
-    create: async (path, text) => { files.set(path, text); return { path }; },
+    create: async (path, text) => {
+      assert(folders.has(path.slice(0, path.lastIndexOf("/"))), "Cache parent must exist before writing");
+      files.set(path, text); return { path };
+    },
     modify: async (file, text) => files.set(file.path, text),
     adapter: { read: async () => "" },
   },
 };
-async function load() {
+async function load(cacheDir) {
   const root = new Element("root");
   await vm.runInNewContext(source, {
-    __scheduleRunnerEntry: { dv: { current: () => ({ file: { folder: "Runner" } }), container: root, el: (_tag, text) => { throw new Error(text); } }, app, moment, Notice: class {}, config: { registry: {} } },
+    __scheduleRunnerEntry: { dv: { current: () => ({ file: { folder: "Runner" } }), container: root, el: (_tag, text) => { throw new Error(text); } }, app, moment, Notice: class {}, config: { registry: {}, cacheDir } },
     ScheduleRunner: { validateRegistry: () => ({ ok: true }) },
-    RoutineRunnerEmbed: { installStyles() {}, serializeSession: x => x, deserializeSession: x => x },
+    RoutineRunnerEmbed: { cachePath: E.cachePath, ensureCacheFolder: E.ensureCacheFolder, installStyles() {}, serializeSession: x => x, deserializeSession: x => x },
     document: { createElement: tag => new Element(tag) }, window: {}, setTimeout, clearTimeout,
   });
   return root;
@@ -50,10 +56,20 @@ async function load() {
   input.value = "2026-09-26";
   await input.onchange();
   assert(find(root, x => x.text === "Local Daily Note · UTC block clocks · Daily/2026/09/26.md"));
-  assert.equal(JSON.parse(files.get("Runner/schedule-runner-state.yaml")).selectedDate, "2026-09-26");
+  assert.equal(JSON.parse(files.get("Runner/cache/schedule-runner-state.yaml")).selectedDate, "2026-09-26");
+  assert(!files.has("Runner/schedule-runner-state.yaml"), "State must not be written beside source files");
   today = "2026-09-28";
   root = await load();
   assert.equal(find(root, x => x.type === "date").value, "2026-09-26", "Reload after UTC midnight must preserve the selected date");
   assert(find(root, x => x.text === "Local Daily Note · UTC block clocks · Daily/2026/09/26.md"));
+  root = await load("private/runner-cache");
+  assert.equal(find(root, x => x.type === "date").value, today, "Changing cache folders must not read the previous location");
+  const customInput = find(root, x => x.type === "date");
+  customInput.value = "2026-09-25";
+  await customInput.onchange();
+  assert.equal(JSON.parse(files.get("private/runner-cache/schedule-runner-state.yaml")).selectedDate, "2026-09-25");
+  assert(folders.has("private") && folders.has("private/runner-cache"), "Nested cache folders must be created");
+  root = await load("private/runner-cache");
+  assert.equal(find(root, x => x.type === "date").value, "2026-09-25");
   console.log("schedule-runner date persistence: all tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

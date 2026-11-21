@@ -1,2 +1,4 @@
-routine-runner-state.yaml
-schedule-runner-state.yaml
+# Runtime data, including sync-conflict copies, must never be published.
+cache/
+*-runner-state*.yaml
+*-runner-state*.md

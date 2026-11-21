@@ -23,7 +23,7 @@ const byLabel = (node, label) => find(node, x => x.textContent === label);
 const notePath = '2026-09-29.md';
 const initial = '## Plan\n- 0900 Work ^p-work\n- 1000 Break ^p-break\n- 1100 Later ^p-later\n\n## Actual\n- 0900 Work ^a-work-1\n- 1000 Break ^a-break-1\n';
 async function setup(running = false, note = initial) {
-  const files = new Map([[notePath, note], ['Runner/schedule-runner-state.yaml', JSON.stringify({ 'schedule-runner-state-version': 2, sessions: { 'p-break': { running } } })]]);
+  const files = new Map([[notePath, note], ['Runner/cache/schedule-runner-state.yaml', JSON.stringify({ 'schedule-runner-state-version': 2, sessions: { 'p-break': { running } } })]]);
   const root = new Element('root'), body = new Element('body'), notices = [], routineOptions = [];
   const app = { metadataCache: { getFileCache: () => ({}) }, internalPlugins: { plugins: {} }, vault: {
     getAbstractFileByPath: path => files.has(path) ? { path } : null,
@@ -35,7 +35,7 @@ async function setup(running = false, note = initial) {
       moment: Object.assign((value = '2026-09-29') => ({ format: () => value, isValid: () => true }),
         { utc: (value = '2026-09-29') => ({ format: () => value, isValid: () => true }) }),
       Notice: class { constructor(message) { notices.push(message); } }, config: { registry: { version: 1, projects: {} } } },
-    ScheduleRunner: S, RoutineRunnerEmbed: { model: E.model, createRunState: E.createRunState, renderPurgeCacheButton() {}, renderSession(_host, options) { routineOptions.push(options); return { dispose() {} }; }, installStyles() {}, serializeSession: x => x, deserializeSession: x => x, runningSession: x => !!x?.running },
+    ScheduleRunner: S, RoutineRunnerEmbed: { ...E, model: E.model, createRunState: E.createRunState, renderPurgeCacheButton() {}, renderSession(_host, options) { routineOptions.push(options); return { dispose() {} }; }, installStyles() {}, serializeSession: x => x, deserializeSession: x => x, runningSession: x => !!x?.running },
     document: { body, createElement: tag => new Element(tag) }, window: {}, setTimeout, clearTimeout,
   });
   return { root, body, files, notices, routineOptions };

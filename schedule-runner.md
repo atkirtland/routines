@@ -7,6 +7,7 @@ created: 2026-09-27
 
 ```dataviewjs
 const config = {
+  cacheDir: `${dv.current().file.folder}/cache`, // Vault-relative; may be elsewhere in the vault.
   registry: {
     version: 1,
     projects: {

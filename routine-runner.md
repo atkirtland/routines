@@ -1,7 +1,7 @@
 ---
 aliases:
   - Routine Runner
-created: 2026-09-19T15:14:37-04:00
+created: 2026-09-19
 modified: 2026-09-27T00:00:00Z
 ---
 
@@ -9,6 +9,7 @@ modified: 2026-09-27T00:00:00Z
 
 ```dataviewjs
 const config = {
+  cacheDir: `${dv.current().file.folder}/cache`, // Vault-relative; may be elsewhere in the vault.
   defaultEstimateMs: 0,
   redrawIntervalMs: 1000,
 };
